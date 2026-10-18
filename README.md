@@ -1,36 +1,44 @@
 # AndroidVM — Android 4.4 in your browser
 
-AndroidVM starts Android 4.4 (KitKat) Google APIs x86 on a temporary GitHub Actions runner. The web page is a bare, full-viewport noVNC display with no extra panels.
+AndroidVM starts Android 4.4 (KitKat) Google APIs x86 on a temporary GitHub Actions runner. The webpage shows the remote desktop edge-to-edge, without an additional dashboard.
 
 ## Start a session
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android 4.4 VM** and click **Run workflow**.
-3. Choose the session duration, whether ADB root should remain enabled, the RAM and CPU core count, the internal data partition size, and whether to attach an SD card (plus its capacity).
+3. Choose the session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
-The workflow is manual-only. The default configuration is 2048 MB RAM, 1 CPU core, 2 GB internal data storage, and no SD card. Options are bounded to stay reasonable for a GitHub-hosted runner.
+The workflow is manual-only. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
 
-## Audio and display
+## Display and window controls
 
-- The noVNC display fills the webpage viewport. Browser chrome is not hidden; you do not need to enter browser full-screen mode.
-- The audio player is hidden and attempts to start automatically. Chrome can block audible autoplay on a site that has not yet received user interaction; when blocked, the first normal click/tap/key interaction with the emulator retries audio, so there is no separate Play button.
-- Icecast and FFmpeg use smaller buffers to reduce the audio delay. Small buffers reduce backlog but can disconnect/rebuffer on slow networks.
-- Startup checks for KVM. Without KVM, software emulation may be very slow. The guest GPU renderer stays disabled for compatibility.
-- The Android SDK and system image are cached before the long-running session. GitHub-hosted jobs have a six-hour limit; the selectable sessions are capped at 300 minutes.
+- The noVNC display fills the webpage; browser full-screen mode is not required.
+- The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward.
+- The noVNC control bar remains available for keyboard, settings, power, clipboard, and disconnect controls.
+- The emulator runs in an isolated Xvfb display, which is streamed through x11vnc and noVNC.
+
+## Audio
+
+- Audio is sent as raw mono PCM frames over a WebSocket, instead of MP3 over Icecast and the browser's media-element buffering path.
+- FFmpeg captures the PulseAudio monitor at 22.05 kHz / 16-bit. Small packets are scheduled through the Web Audio API with a short queue; stale scheduled audio is dropped if the browser falls behind.
+- The page attempts to start audio automatically. Chrome can block audible autoplay until the first interaction; if that happens, the first normal click, tap, or keypress in the emulator retries audio without a separate Play button.
+- The startup step runs a local WebSocket smoke test and reports how many bytes arrived. Network and device output latency can still vary.
 
 ## Choosing VM resources
 
 - **RAM:** 1536, 2048, 3072, or 4096 MB.
-- **CPU cores:** 1, 2, or 4. One core is the default because it was the configuration used while diagnosing the old KitKat image's boot behavior.
-- **Internal data storage:** 1, 2, 4, or 8 GB. This controls the Android data partition.
-- **SD card:** optional, with a selectable capacity of 256 MB, 512 MB, 1 GB, 2 GB, 4 GB, or 8 GB. When enabled, the launcher creates a FAT32 virtual SD image and attaches it to the emulator.
+- **CPU cores:** 1, 2, or 4. One core is the default for KitKat compatibility.
+- **Internal data storage:** 1, 2, 4, or 8 GB.
+- **SD card:** optional, 256 MB, 512 MB, 1 GB, 2 GB, 4 GB, or 8 GB. When enabled, the launcher creates and attaches a virtual SD image.
+
+The job checks for KVM. Without KVM, CPU emulation may be much slower. The chosen session length is capped at 300 minutes to remain within GitHub-hosted job limits.
 
 ## Installing APKs
 
 - Put regular APK files in `apks/`. The launcher attempts to install them using `adb install -r` after Android boots.
 - Put system APK files in `systemapks/`. The launcher temporarily obtains ADB root, remounts `/system`, copies APKs into `/system/app`, and reboots so Package Manager can scan them.
-- **Root access** controls whether ADB remains root for the session. This is ADB shell root; it does not automatically grant root privileges to every app. APKs must support Android 4.4 / API 19.
+- **Root access** controls whether ADB remains root for the session. It is ADB shell root; it does not automatically grant root privileges to every app. APKs must support Android 4.4 / API 19.
 
 ## Optional access protection
 
@@ -38,15 +46,16 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 
 ## Troubleshooting
 
-- **Audio still lags or buffers:** connection speed and browser buffering can still add latency, despite the lower server buffers.
-- **No audio on page load:** audible autoplay is controlled by browser policy. Interact normally with the emulator; that should also trigger an audio retry.
-- **No SD card:** confirm **Attach a virtual SD card** is set to enabled in the workflow inputs.
-- **The tunnel URL does not load:** it exists only while the workflow is running. Start a new session for a new URL.
-- **The VM stops:** the selected duration expires, the workflow is cancelled, or GitHub's six-hour job limit is reached.
+- **Audio is missing:** check the startup log for the PCM WebSocket smoke test and PulseAudio/FFmpeg errors.
+- **Audio delay:** the direct PCM path eliminates MP3/Icecast buffering, but browser scheduling and network latency can still add delay.
+- **No SD card:** confirm that the SD card input is enabled in the workflow form.
+- **The URL does not load:** it exists only while the workflow is running. Start a new session to receive a new URL.
+- **The VM stops:** the selected duration expires, the workflow is cancelled, or GitHub's job limit is reached.
 
 ## Project layout
 
 - `.github/workflows/start-vm.yml` — manual session and resource options.
-- `scripts/start-vm.sh` — Android, audio, noVNC and TryCloudflare launcher.
-- `nginx/androidvm.conf.template` — gateway for the page, noVNC, and audio.
-- `site/index.html` — minimal full-viewport Android display.
+- `scripts/start-vm.sh` — emulator, lightweight window manager, noVNC, audio and tunnel launcher.
+- `scripts/audio_stream.py` — low-latency PCM WebSocket audio bridge.
+- `nginx/androidvm.conf.template` — gateway for the webpage, noVNC and WebSocket audio.
+- `site/index.html` — minimal full-viewport display and audio scheduler.
