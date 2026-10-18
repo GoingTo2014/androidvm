@@ -6,10 +6,10 @@ AndroidVM starts Android 4.4 (KitKat) Google APIs x86 on a temporary GitHub Acti
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android 4.4 VM** and click **Run workflow**.
-3. Choose the session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose the device form factor (Phone or Tablet), session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
-The workflow is manual-only. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
+The workflow is manual-only. Phone mode is the default. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
 
 ## Display and window controls
 
@@ -25,8 +25,14 @@ The workflow is manual-only. Default resources are 2048 MB RAM, one CPU core, 2 
 - The page attempts to start audio automatically. Chrome can block audible autoplay until the first interaction; if that happens, the first normal click, tap, or keypress in the emulator retries audio without a separate Play button.
 - The startup step runs a local WebSocket smoke test and reports how many bytes arrived. Network and device output latency can still vary.
 
+## Phone and tablet modes
+
+- **Phone** keeps the existing/default Android display configuration.
+- **Tablet** uses a 1024×600 landscape display at 160 dpi. Its 600 dp shortest dimension encourages Android 4.4 and apps to use tablet layouts, while leaving room for the emulator window's titlebar on the virtual desktop.
+
 ## Choosing VM resources
 
+- **Device form factor:** Phone (default) or Tablet.
 - **RAM:** 1536, 2048, 3072, or 4096 MB.
 - **CPU cores:** 1, 2, or 4. One core is the default for KitKat compatibility.
 - **Internal data storage:** 1, 2, 4, or 8 GB.
