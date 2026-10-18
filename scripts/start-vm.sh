@@ -128,7 +128,11 @@ xsetroot -solid "#151820" || true
 openbox --sm-disable > "$RUNNER_TEMP/openbox.log" 2>&1 &
 WM_PID=$!
 sleep 2
-x11vnc -display :99 -forever -shared -rfbport 5900 -nopw -quiet > "$RUNNER_TEMP/x11vnc.log" 2>&1 &
+# Poll more frequently and defer updates less so animation does not wait on VNC defaults.
+# -nowait_bog prevents x11vnc's adaptive long sleeps when framebuffer polling falls behind.
+x11vnc -display :99 -forever -shared -rfbport 5900 -nopw \
+  -wait 10 -defer 5 -wait_ui 2 -setdefer 2 -nowait_bog \
+  -quiet > "$RUNNER_TEMP/x11vnc.log" 2>&1 &
 VNC_PID=$!
 
 echo "Checking for KVM hardware acceleration..."
