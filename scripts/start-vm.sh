@@ -135,7 +135,7 @@ wait_for_android() {
   echo "Waiting for Android ($label; maximum $((attempts * 2)) seconds)..."
   for i in $(seq 1 "$attempts"); do
     if adb devices 2>/dev/null | grep -q 'emulator-5554[[:space:]]*device'; then
-      if adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | grep -q '^1$'; then
+      if adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -q '^1$'; then
         booted=1
         break
       fi
