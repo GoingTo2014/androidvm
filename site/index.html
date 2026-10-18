@@ -13,7 +13,7 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #000;
+      background: #151820;
     }
     #android-screen {
       position: fixed;
@@ -25,58 +25,125 @@
       margin: 0;
       padding: 0;
       border: 0;
-      background: #000;
+      background: #151820;
     }
-    #audio { display: none; }
   </style>
 </head>
 <body>
   <iframe
     id="android-screen"
-    title="Android 4.4 virtual device"
-    src="/novnc/vnc.html?autoconnect=true&amp;resize=scale&amp;path=%2Fwebsockify&amp;quality=6&amp;compression=6"
+    title="Android 4.4 virtual desktop"
+    src="/novnc/vnc.html?autoconnect=true&amp;resize=scale&amp;path=%2Fwebsockify&amp;quality=6&amp;compression=2"
     allow="autoplay; fullscreen; clipboard-read; clipboard-write"
   ></iframe>
-  <audio id="audio" autoplay preload="auto" src="/audio.mp3" aria-hidden="true"></audio>
   <script>
     const frame = document.getElementById("android-screen");
-    const audio = document.getElementById("audio");
-    let audioPlaying = false;
+    const SAMPLE_RATE = 22050;
+    let audioContext = null;
+    let gainNode = null;
+    let audioSocket = null;
+    let reconnectTimer = 0;
+    let nextPlaybackTime = 0;
+    const scheduledSources = new Set();
 
-    async function tryStartAudio() {
-      if (audioPlaying || !audio.paused) return;
+    function prepareAudioContext() {
+      if (audioContext) return;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
       try {
-        await audio.play();
-        audioPlaying = !audio.paused;
+        audioContext = new AudioContextClass({ latencyHint: "interactive", sampleRate: SAMPLE_RATE });
       } catch (_) {
-        // Chrome may block audible autoplay until the user interacts with the page.
-        // A normal first click/tap/keypress in the emulator will retry playback.
+        audioContext = new AudioContextClass({ latencyHint: "interactive" });
+      }
+      gainNode = audioContext.createGain();
+      gainNode.gain.value = 1;
+      gainNode.connect(audioContext.destination);
+    }
+
+    function dropQueuedAudio() {
+      for (const source of scheduledSources) {
+        try { source.stop(); } catch (_) {}
+      }
+      scheduledSources.clear();
+      nextPlaybackTime = audioContext ? audioContext.currentTime + 0.035 : 0;
+    }
+
+    function playPcmPacket(packet) {
+      if (!audioContext || audioContext.state !== "running" || !(packet instanceof ArrayBuffer)) return;
+      const samples = new Int16Array(packet);
+      if (samples.length === 0) return;
+
+      const now = audioContext.currentTime;
+      // If the browser ever falls behind, discard scheduled audio instead of building
+      // a growing queue that would make the sound trail the picture by several seconds.
+      if (nextPlaybackTime > now + 0.22) dropQueuedAudio();
+      if (nextPlaybackTime < now + 0.03) nextPlaybackTime = now + 0.03;
+
+      const audioBuffer = audioContext.createBuffer(1, samples.length, SAMPLE_RATE);
+      const channel = audioBuffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) {
+        channel[i] = samples[i] / 32768;
+      }
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(gainNode);
+      scheduledSources.add(source);
+      source.onended = () => scheduledSources.delete(source);
+      source.start(nextPlaybackTime);
+      nextPlaybackTime += audioBuffer.duration;
+    }
+
+    function startAudio() {
+      prepareAudioContext();
+      if (!audioContext) return;
+
+      // Attempt autoplay. Chrome may suspend Web Audio until the page receives a gesture.
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+
+      if (audioSocket && (audioSocket.readyState === WebSocket.CONNECTING ||
+                          audioSocket.readyState === WebSocket.OPEN)) return;
+
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(protocol + "//" + location.host + "/audio-ws");
+      socket.binaryType = "arraybuffer";
+      audioSocket = socket;
+      socket.onmessage = event => playPcmPacket(event.data);
+      socket.onerror = () => {
+        try { socket.close(); } catch (_) {}
+      };
+      socket.onclose = () => {
+        if (audioSocket === socket) audioSocket = null;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(startAudio, 1200);
+      };
+    }
+
+    function unlockAudioFromGesture() {
+      startAudio();
+      if (audioContext && audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
       }
     }
 
-    function wakeAudio() {
-      if (!audioPlaying) void tryStartAudio();
-    }
+    // Try to start audio immediately without a separate Play button.
+    startAudio();
 
-    audio.addEventListener("playing", () => { audioPlaying = true; });
-    audio.addEventListener("pause", () => { audioPlaying = false; });
-    void tryStartAudio();
-
-    window.addEventListener("pointerdown", wakeAudio, { passive: true });
-    window.addEventListener("keydown", wakeAudio);
-
-    // noVNC runs same-origin through the gateway; use the user's normal interaction
-    // with the emulator screen to unlock audio without adding a separate Play button.
+    // If autoplay was blocked, ordinary interaction with the emulator unlocks Web Audio.
+    window.addEventListener("pointerdown", unlockAudioFromGesture, { passive: true });
+    window.addEventListener("keydown", unlockAudioFromGesture);
     frame.addEventListener("load", () => {
-      void tryStartAudio();
       try {
         const remoteDocument = frame.contentDocument;
         if (remoteDocument) {
-          remoteDocument.addEventListener("pointerdown", wakeAudio, true);
-          remoteDocument.addEventListener("touchstart", wakeAudio, true);
-          remoteDocument.addEventListener("keydown", wakeAudio, true);
+          remoteDocument.addEventListener("pointerdown", unlockAudioFromGesture, true);
+          remoteDocument.addEventListener("touchstart", unlockAudioFromGesture, true);
+          remoteDocument.addEventListener("keydown", unlockAudioFromGesture, true);
         }
       } catch (_) {}
+      startAudio();
     });
   </script>
 </body>
