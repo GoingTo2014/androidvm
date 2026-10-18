@@ -11,6 +11,7 @@ VM_CPU_CORES="${VM_CPU_CORES:-1}"
 VM_DATA_PARTITION_SIZE="${VM_DATA_PARTITION_SIZE:-2G}"
 VM_SD_CARD_ENABLED="${VM_SD_CARD_ENABLED:-disabled}"
 VM_SD_CARD_SIZE="${VM_SD_CARD_SIZE:-1G}"
+VM_DEVICE_MODE="${VM_DEVICE_MODE:-phone}"
 
 case "$VM_RAM_MB" in
   1536|2048|3072|4096) ;;
@@ -31,6 +32,10 @@ esac
 case "$VM_SD_CARD_SIZE" in
   256M|512M|1G|2G|4G|8G) ;;
   *) echo "::error::Invalid VM_SD_CARD_SIZE: $VM_SD_CARD_SIZE"; exit 2 ;;
+esac
+case "$VM_DEVICE_MODE" in
+  phone|tablet) ;;
+  *) echo "::error::Invalid VM_DEVICE_MODE: $VM_DEVICE_MODE"; exit 2 ;;
 esac
 
 export ANDROID_HOME="$HOME/.android-sdk"
@@ -88,6 +93,20 @@ showDeviceFrame=no
 skin.dynamic=no
 disk.dataPartition.size=$VM_DATA_PARTITION_SIZE
 AVD_CONFIG
+
+if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+  # At 160 dpi, 1024x600 gives Android a 600 dp smallest width, triggering tablet layouts.
+  # The landscape window is small enough to retain its titlebar on the 1280x800 virtual desktop.
+  cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_TABLET_CONFIG'
+hw.lcd.width=1024
+hw.lcd.height=600
+hw.lcd.density=160
+hw.initialOrientation=landscape
+AVD_TABLET_CONFIG
+  echo "Configured tablet mode: 1024x600 landscape at 160 dpi."
+else
+  echo "Using the default phone display profile."
+fi
 
 SDCARD_ARGS=()
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
@@ -161,6 +180,9 @@ EMULATOR_ARGS=(
   -memory "$VM_RAM_MB"
   -cores "$VM_CPU_CORES"
 )
+if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+  EMULATOR_ARGS+=(-skin 1024x600)
+fi
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
   EMULATOR_ARGS+=("${SDCARD_ARGS[@]}")
 fi
@@ -462,6 +484,11 @@ echo "KVM acceleration: $ACCEL_MODE"
 echo "Audio stream setup: $AUDIO_AVAILABLE (low-latency PCM over WebSocket)"
 echo "RAM: $VM_RAM_MB MB"
 echo "CPU cores: $VM_CPU_CORES"
+if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+  echo "Device mode: Tablet (1024x600 landscape, 160 dpi)"
+else
+  echo "Device mode: Phone (default display profile)"
+fi
 echo "Internal data storage: $VM_DATA_PARTITION_SIZE"
 echo "SD card: $VM_SD_CARD_ENABLED"
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then echo "SD card size: $VM_SD_CARD_SIZE"; fi
