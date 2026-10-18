@@ -42,12 +42,13 @@ mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
 EMULATOR_PID=""
 XVFB_PID=""
 VNC_PID=""
+WM_PID=""
 NOVNC_PID=""
 AUDIO_PID=""
 TUNNEL_PID=""
 cleanup() {
   echo "Stopping AndroidVM session processes..."
-  for pid in "$TUNNEL_PID" "$AUDIO_PID" "$NOVNC_PID" "$VNC_PID" "$EMULATOR_PID" "$XVFB_PID"; do
+  for pid in "$TUNNEL_PID" "$AUDIO_PID" "$NOVNC_PID" "$VNC_PID" "$WM_PID" "$EMULATOR_PID" "$XVFB_PID"; do
     if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
   done
   wait 2>/dev/null || true
@@ -58,9 +59,9 @@ trap 'exit 143' TERM
 
 echo "Installing system packages..."
 sudo apt-get update
-echo "icecast2 icecast2/icecast-setup boolean true" | sudo debconf-set-selections
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  xvfb x11vnc novnc websockify pulseaudio ffmpeg icecast2 nginx apache2-utils \
+  xvfb x11vnc novnc websockify pulseaudio ffmpeg nginx apache2-utils \
+  openbox xdotool wmctrl python3-websockets \
   curl unzip ca-certificates libnss3 libasound2t64 libxkbcommon-x11-0 libxcb-cursor0
 
 AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
@@ -102,6 +103,10 @@ Xvfb :99 -screen 0 1280x800x24 -ac +extension RANDR -nolisten tcp > "$RUNNER_TEM
 XVFB_PID=$!
 export DISPLAY=:99
 sleep 2
+xsetroot -solid "#151820" || true
+openbox --sm-disable > "$RUNNER_TEMP/openbox.log" 2>&1 &
+WM_PID=$!
+sleep 2
 x11vnc -display :99 -forever -shared -rfbport 5900 -nopw -quiet > "$RUNNER_TEMP/x11vnc.log" 2>&1 &
 VNC_PID=$!
 
@@ -121,46 +126,16 @@ else
   export ANDROID_I_WANT_MY_TCG=yes
 fi
 
-AUDIO_AVAILABLE=1
-ICECAST_PASSWORD="$(openssl rand -hex 20)"
+AUDIO_AVAILABLE=0
 if pulseaudio --start --exit-idle-time=-1; then
-  sleep 2
-  if pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM >/dev/null 2>&1 && pactl set-default-sink vm_audio; then
-    if sudo sed -i "s#<source-password>[^<]*</source-password>#<source-password>$ICECAST_PASSWORD</source-password>#" /etc/icecast2/icecast.xml \
-      && sudo sed -i 's/ENABLE=false/ENABLE=true/' /etc/default/icecast2; then
-      echo "Reducing Icecast buffering for lower-latency audio..."
-      sudo python3 - <<'PY'
-import re
-from pathlib import Path
-
-config = Path("/etc/icecast2/icecast.xml")
-content = config.read_text()
-content = re.sub(r"\s*<burst-on-connect>.*?</burst-on-connect>", "", content, count=1, flags=re.S)
-for tag in ("queue-size", "burst-size"):
-    content = re.sub(r"\s*<" + tag + r">.*?</" + tag + r">", "", content, count=1, flags=re.S)
-limit_end = content.find("</limits>")
-if limit_end < 0:
-    raise SystemExit("Icecast config has no <limits> block; refusing to rewrite it.")
-settings = "    <queue-size>32768</queue-size>\n    <burst-size>4096</burst-size>\n    "
-content = content[:limit_end] + settings + content[limit_end:]
-config.write_text(content)
-PY
-      if sudo systemctl restart icecast2; then
-        AUDIO_AVAILABLE=1
-      else
-        AUDIO_AVAILABLE=0
-      fi
-    else
-      AUDIO_AVAILABLE=0
-    fi
-  else
-    AUDIO_AVAILABLE=0
+  sleep 1
+  if pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM >/dev/null 2>&1 \
+    && pactl set-default-sink vm_audio; then
+    AUDIO_AVAILABLE=1
   fi
-else
-  AUDIO_AVAILABLE=0
 fi
 if [ "$AUDIO_AVAILABLE" = "0" ]; then
-  echo "::warning::PulseAudio could not be configured; video may work without streamed audio."
+  echo "::warning::PulseAudio could not be configured; VM audio will be unavailable."
 fi
 
 echo "Starting Android 4.4 emulator..."
@@ -245,6 +220,31 @@ wait_for_android() {
 }
 
 wait_for_android "initial boot" 240
+
+center_emulator_window() {
+  local window_id="" geometry="" width="" height="" x="" y=""
+  for i in $(seq 1 30); do
+    window_id="$(wmctrl -l 2>/dev/null | awk 'BEGIN { IGNORECASE=1 } /Android Emulator/ { print $1; exit }' || true)"
+    if [ -n "$window_id" ]; then
+      geometry="$(xdotool getwindowgeometry --shell "$window_id" 2>/dev/null || true)"
+      width="$(printf '%s\n' "$geometry" | awk -F= '$1=="WIDTH" {print $2}')"
+      height="$(printf '%s\n' "$geometry" | awk -F= '$1=="HEIGHT" {print $2}')"
+      if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
+        x=$(( (1280 - width) / 2 ))
+        y=$(( (800 - height) / 2 ))
+        (( x < 0 )) && x=0
+        (( y < 0 )) && y=0
+        wmctrl -ir "$window_id" -e "0,$x,$y,-1,-1" || true
+        echo "Centered the movable Android Emulator window at $x,$y (size $width x $height)."
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  echo "::warning::Could not auto-center the Android Emulator window; it may still be positioned manually."
+  wmctrl -l || true
+}
+center_emulator_window
 adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
 adb -s emulator-5554 shell input keyevent 82 || true
 echo "Android 4.4 booted successfully."
@@ -332,19 +332,41 @@ for apk in "${NORMAL_APKS[@]}"; do
 done
 
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
-  echo "Starting live audio encoder..."
-  nohup ffmpeg -hide_banner -loglevel warning \
-    -thread_queue_size 16 -fflags nobuffer \
-    -f pulse -fragment_size 4096 -i vm_audio.monitor \
-    -vn -ac 2 -ar 44100 -c:a libmp3lame -b:a 96k -flush_packets 1 -content_type audio/mpeg \
-    -f mp3 "icecast://source:$ICECAST_PASSWORD@127.0.0.1:8000/androidvm.mp3" \
+  echo "Starting low-latency PCM WebSocket audio..."
+  nohup /usr/bin/python3 "$GITHUB_WORKSPACE/scripts/audio_stream.py" \
     > "$RUNNER_TEMP/audio.log" 2>&1 &
   AUDIO_PID=$!
-  sleep 2
-  if ! kill -0 "$AUDIO_PID" 2>/dev/null; then
-    echo "::warning::FFmpeg audio streaming did not start. Check audio.log in the workflow's runner logs."
-    AUDIO_AVAILABLE=0
+  for i in $(seq 1 20); do
+    if grep -q "Low-latency audio WebSocket listening" "$RUNNER_TEMP/audio.log" 2>/dev/null; then
+      break
+    fi
+    if ! kill -0 "$AUDIO_PID" 2>/dev/null; then
+      echo "::error::PCM audio bridge exited during startup."
+      cat "$RUNNER_TEMP/audio.log" || true
+      exit 1
+    fi
+    sleep 1
+  done
+  if ! grep -q "Low-latency audio WebSocket listening" "$RUNNER_TEMP/audio.log" 2>/dev/null; then
+    echo "::error::PCM audio bridge did not start listening."
+    cat "$RUNNER_TEMP/audio.log" || true
+    exit 1
   fi
+  /usr/bin/python3 - <<'PY'
+import asyncio
+import websockets
+
+async def verify_stream():
+    async with websockets.connect("ws://127.0.0.1:8765/audio-ws", max_size=None) as socket:
+        payload = await asyncio.wait_for(socket.recv(), timeout=5)
+        if not isinstance(payload, bytes) or len(payload) == 0:
+            raise RuntimeError("Audio bridge returned no PCM audio frames.")
+        print("PCM audio smoke test passed: received %d bytes." % len(payload))
+
+asyncio.run(verify_stream())
+PY
+else
+  echo "::warning::Skipping low-latency audio stream because PulseAudio is unavailable."
 fi
 
 echo "Starting noVNC web display..."
@@ -437,7 +459,7 @@ echo "ANDROID VM IS READY"
 echo "Open: $TUNNEL_URL"
 echo "Android: 4.4 KitKat x86"
 echo "KVM acceleration: $ACCEL_MODE"
-echo "Audio stream setup: $AUDIO_AVAILABLE (low-latency buffering)"
+echo "Audio stream setup: $AUDIO_AVAILABLE (low-latency PCM over WebSocket)"
 echo "RAM: $VM_RAM_MB MB"
 echo "CPU cores: $VM_CPU_CORES"
 echo "Internal data storage: $VM_DATA_PARTITION_SIZE"
