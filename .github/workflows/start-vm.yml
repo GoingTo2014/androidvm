@@ -36,8 +36,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate launcher syntax
-        run: bash -n scripts/start-vm.sh
+      - name: Validate launcher scripts
+        run: |
+          bash -n scripts/start-vm.sh
+          bash -n scripts/prepare-android-sdk.sh
 
       - name: Set up Java for Android SDK tools
         uses: actions/setup-java@v4
@@ -47,20 +49,22 @@ jobs:
 
       - name: Restore Android SDK and KitKat image cache
         id: android-sdk-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.android-sdk
-          key: ${{ runner.os }}-android-sdk-kitkat-x86-v1
+          key: ${{ runner.os }}-android-sdk-kitkat-x86-v2
           restore-keys: |
             ${{ runner.os }}-android-sdk-kitkat-x86-
 
-      - name: Report SDK cache status
-        run: |
-          if [ "${{ steps.android-sdk-cache.outputs.cache-hit }}" = "true" ]; then
-            echo "Android SDK cache restored; skipping the command-line tools download."
-          else
-            echo "No exact Android SDK cache was found. This run will populate it for subsequent sessions."
-          fi
+      - name: Prepare Android SDK and KitKat system image
+        run: bash scripts/prepare-android-sdk.sh
+
+      - name: Save Android SDK cache before VM session
+        if: success() && steps.android-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android-sdk
+          key: ${{ runner.os }}-android-sdk-kitkat-x86-v2
 
       - name: Start KitKat desktop and tunnel
         env:
