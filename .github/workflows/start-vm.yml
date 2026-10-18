@@ -28,6 +28,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate launcher syntax
+        run: bash -n scripts/start-vm.sh
+
       - name: Set up Java for Android SDK tools
         uses: actions/setup-java@v4
         with:
