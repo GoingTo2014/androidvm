@@ -299,6 +299,29 @@ sudo ln -sf /etc/nginx/sites-available/androidvm /etc/nginx/sites-enabled/androi
 sudo nginx -t
 sudo systemctl restart nginx
 
+echo "Testing the local web gateway before publishing its tunnel..."
+if [ -n "$VM_ACCESS_PASSWORD" ]; then
+  if ! curl --silent --show-error --fail --user "vm:$VM_ACCESS_PASSWORD" \
+    http://127.0.0.1:8080/ -o "$RUNNER_TEMP/androidvm-homepage.html"; then
+    echo "::error::The authenticated homepage failed its local HTTP test."
+    sudo tail -n 100 /var/log/nginx/error.log || true
+    exit 1
+  fi
+else
+  if ! curl --silent --show-error --fail \
+    http://127.0.0.1:8080/ -o "$RUNNER_TEMP/androidvm-homepage.html"; then
+    echo "::error::The homepage failed its local HTTP test."
+    sudo tail -n 100 /var/log/nginx/error.log || true
+    exit 1
+  fi
+fi
+if ! grep -q "AndroidVM" "$RUNNER_TEMP/androidvm-homepage.html"; then
+  echo "::error::Nginx returned a response, but it was not the AndroidVM homepage."
+  sudo tail -n 100 /var/log/nginx/error.log || true
+  exit 1
+fi
+echo "The homepage returned HTTP 200 and contains the expected AndroidVM page."
+
 echo "Installing cloudflared..."
 curl -fL --retry 3 --retry-delay 2 \
   https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
