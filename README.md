@@ -16,7 +16,8 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 - The noVNC display fills the webpage; browser full-screen mode is not required.
 - The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward.
 - The noVNC control bar remains available for keyboard, settings, power, clipboard, and disconnect controls.
-- The emulator runs in an isolated Xvfb display, which is streamed through x11vnc and noVNC.
+- The emulator runs in an isolated Xvfb display, streamed through x11vnc and noVNC.
+- The VNC capture loop uses a 10 ms poll, 5 ms update deferral, faster interactive update handling, and disables x11vnc's adaptive long-sleep fallback when capture falls behind. noVNC uses JPEG quality 5 and compression level 1 to favor responsiveness over image fidelity. Actual FPS still depends on runner load and network conditions.
 
 ## Audio
 
