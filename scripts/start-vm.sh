@@ -51,7 +51,7 @@ printf 'no\n' | "$AVDMANAGER" create avd \
   --package "system-images;android-19;google_apis;x86" \
   --force
 cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_CONFIG'
-hw.cpu.ncore=2
+hw.cpu.ncore=1
 hw.ramSize=2048
 hw.keyboard=yes
 hw.gpu.enabled=no
@@ -118,12 +118,12 @@ fi
 if [ "$ACCEL_MODE" = "off" ]; then
   nohup env $EMULATOR_AUDIO_ENV ANDROID_I_WANT_MY_TCG=yes \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel off \
-    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 2 \
+    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 1 \
     $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
   nohup env $EMULATOR_AUDIO_ENV \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel on \
-    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 2 \
+    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 1 \
     $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
@@ -153,8 +153,18 @@ wait_for_android() {
     adb devices -l || true
     echo "ADB get-state:"
     adb -s emulator-5554 get-state 2>&1 || true
-    echo "Recent Android logcat (if ADB is responsive):"
-    adb -s emulator-5554 logcat -d -b all -t 200 2>&1 | tail -n 200 || true
+    echo "Android system properties (boot/service state):"
+    adb -s emulator-5554 shell getprop 2>&1 | tail -n 240 || true
+    echo "Android process list:"
+    adb -s emulator-5554 shell ps 2>&1 | tail -n 160 || true
+    echo "Android main log buffer:"
+    adb -s emulator-5554 shell logcat -d -b main -t 200 2>&1 | tail -n 140 || true
+    echo "Android system log buffer:"
+    adb -s emulator-5554 shell logcat -d -b system -t 200 2>&1 | tail -n 140 || true
+    echo "Android events log buffer:"
+    adb -s emulator-5554 shell logcat -d -b events -t 200 2>&1 | tail -n 100 || true
+    echo "Kernel ring buffer:"
+    adb -s emulator-5554 shell dmesg 2>&1 | tail -n 140 || true
     echo "Recent emulator and guest-kernel log:"
     tail -n 240 "$RUNNER_TEMP/emulator.log" || true
     return 1
