@@ -102,6 +102,8 @@ hw.lcd.width=1024
 hw.lcd.height=600
 hw.lcd.density=160
 hw.initialOrientation=landscape
+skin.dynamic=yes
+skin.name=1024x600
 AVD_TABLET_CONFIG
   echo "Configured tablet mode: 1024x600 landscape at 160 dpi."
 else
@@ -180,9 +182,6 @@ EMULATOR_ARGS=(
   -memory "$VM_RAM_MB"
   -cores "$VM_CPU_CORES"
 )
-if [ "$VM_DEVICE_MODE" = "tablet" ]; then
-  EMULATOR_ARGS+=(-skin 1024x600)
-fi
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
   EMULATOR_ARGS+=("${SDCARD_ARGS[@]}")
 fi
