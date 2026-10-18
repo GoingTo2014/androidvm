@@ -7,6 +7,7 @@ buffering delay of a live MP3/Icecast stream.
 """
 import asyncio
 import contextlib
+import signal
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -28,7 +29,7 @@ async def audio_client(websocket, path=None):
         print("Audio client disconnected; clients =", len(clients), flush=True)
 
 
-async def broadcast_loop():
+async def broadcast_loop(stop_event):
     command = [
         "/usr/bin/ffmpeg",
         "-nostdin",
@@ -47,7 +48,7 @@ async def broadcast_loop():
         "pipe:1",
     ]
 
-    while True:
+    while not stop_event.is_set():
         process = None
         try:
             print("Starting low-latency PulseAudio PCM capture...", flush=True)
@@ -56,10 +57,15 @@ async def broadcast_loop():
                 stdout=asyncio.subprocess.PIPE,
             )
             pending = bytearray()
-            while True:
-                data = await process.stdout.read(4096)
+            while not stop_event.is_set():
+                try:
+                    data = await asyncio.wait_for(process.stdout.read(4096), timeout=0.25)
+                except asyncio.TimeoutError:
+                    continue
                 if not data:
                     code = await process.wait()
+                    if stop_event.is_set():
+                        break
                     raise RuntimeError("FFmpeg audio capture ended with exit code " + str(code))
                 pending.extend(data)
                 while len(pending) >= CHUNK_BYTES:
@@ -90,10 +96,15 @@ async def broadcast_loop():
                 if process.returncode is None:
                     process.kill()
                     await process.wait()
-        await asyncio.sleep(1)
+        if not stop_event.is_set():
+            await asyncio.sleep(1)
 
 
 async def main():
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+    loop.add_signal_handler(signal.SIGINT, stop_event.set)
+    loop.add_signal_handler(signal.SIGTERM, stop_event.set)
     async with websockets.serve(
         audio_client,
         HOST,
@@ -105,7 +116,11 @@ async def main():
         write_limit=4096,
     ):
         print("Low-latency audio WebSocket listening on %s:%d" % (HOST, PORT), flush=True)
-        await broadcast_loop()
+        pump = asyncio.create_task(broadcast_loop(stop_event))
+        await stop_event.wait()
+        pump.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await pump
 
 
 if __name__ == "__main__":
