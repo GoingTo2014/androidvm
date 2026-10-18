@@ -118,12 +118,12 @@ fi
 if [ "$ACCEL_MODE" = "off" ]; then
   nohup env $EMULATOR_AUDIO_ENV ANDROID_I_WANT_MY_TCG=yes \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel off \
-    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 1 \
+    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -logcat '*:E' -no-metrics -memory 2048 -cores 1 \
     $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
   nohup env $EMULATOR_AUDIO_ENV \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel on \
-    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 1 \
+    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -logcat '*:E' -no-metrics -memory 2048 -cores 1 \
     $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
