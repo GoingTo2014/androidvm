@@ -1,0 +1,41 @@
+name: Start Android 4.4 VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: "How long to keep the VM running"
+        required: true
+        type: choice
+        default: "120"
+        options:
+          - "30"
+          - "60"
+          - "120"
+          - "180"
+          - "240"
+          - "300"
+
+permissions:
+  contents: read
+
+jobs:
+  android-vm:
+    name: Start Android VM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java for Android SDK tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Start KitKat desktop and tunnel
+        env:
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
+          VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
+        run: bash scripts/start-vm.sh
