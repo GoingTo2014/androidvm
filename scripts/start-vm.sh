@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SESSION_MINUTES=$SESSION_MINUTES
 case "$SESSION_MINUTES" in
   30|60|120|180|240|300) ;;
   *) echo "Invalid SESSION_MINUTES: $SESSION_MINUTES"; exit 2 ;;
@@ -99,11 +98,14 @@ AUDIO_AVAILABLE=1
 ICECAST_PASSWORD="$(openssl rand -hex 20)"
 if pulseaudio --start --exit-idle-time=-1; then
   sleep 2
-  if pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM >/dev/null 2>&1; then
-    pactl set-default-sink vm_audio
-    sudo sed -i "s#<source-password>hackme</source-password>#<source-password>$ICECAST_PASSWORD</source-password>#" /etc/icecast2/icecast.xml
-    sudo sed -i 's/ENABLE=false/ENABLE=true/' /etc/default/icecast2 || true
-    sudo systemctl restart icecast2
+  if pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM >/dev/null 2>&1 && pactl set-default-sink vm_audio; then
+    if sudo sed -i "s#<source-password>[^<]*</source-password>#<source-password>$ICECAST_PASSWORD</source-password>#" /etc/icecast2/icecast.xml \
+      && sudo sed -i 's/ENABLE=false/ENABLE=true/' /etc/default/icecast2 \
+      && sudo systemctl restart icecast2; then
+      AUDIO_AVAILABLE=1
+    else
+      AUDIO_AVAILABLE=0
+    fi
   else
     AUDIO_AVAILABLE=0
   fi
