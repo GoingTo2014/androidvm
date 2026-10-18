@@ -23,6 +23,55 @@ on:
         options:
           - "disabled"
           - "enabled"
+      vm_ram_mb:
+        description: "Android RAM (MB)"
+        required: true
+        type: choice
+        default: "2048"
+        options:
+          - "1536"
+          - "2048"
+          - "3072"
+          - "4096"
+      vm_cpu_cores:
+        description: "Number of Android CPU cores"
+        required: true
+        type: choice
+        default: "1"
+        options:
+          - "1"
+          - "2"
+          - "4"
+      data_partition_size:
+        description: "Android internal data storage size"
+        required: true
+        type: choice
+        default: "2G"
+        options:
+          - "1G"
+          - "2G"
+          - "4G"
+          - "8G"
+      sd_card_enabled:
+        description: "Attach a virtual SD card"
+        required: true
+        type: choice
+        default: "disabled"
+        options:
+          - "disabled"
+          - "enabled"
+      sd_card_size:
+        description: "Virtual SD card capacity (used when enabled)"
+        required: true
+        type: choice
+        default: "1G"
+        options:
+          - "256M"
+          - "512M"
+          - "1G"
+          - "2G"
+          - "4G"
+          - "8G"
 
 permissions:
   contents: read
@@ -71,4 +120,9 @@ jobs:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
+          VM_RAM_MB: ${{ inputs.vm_ram_mb }}
+          VM_CPU_CORES: ${{ inputs.vm_cpu_cores }}
+          VM_DATA_PARTITION_SIZE: ${{ inputs.data_partition_size }}
+          VM_SD_CARD_ENABLED: ${{ inputs.sd_card_enabled }}
+          VM_SD_CARD_SIZE: ${{ inputs.sd_card_size }}
         run: bash scripts/start-vm.sh
