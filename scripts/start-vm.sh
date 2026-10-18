@@ -80,17 +80,18 @@ x11vnc -display :99 -forever -shared -rfbport 5900 -nopw -quiet > "$RUNNER_TEMP/
 VNC_PID=$!
 
 echo "Checking for KVM hardware acceleration..."
-ACCEL_MODE=off
 if [ -e /dev/kvm ]; then
   sudo chmod a+rw /dev/kvm || true
-  if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-    ACCEL_MODE=on
-  fi
+fi
+ACCEL_MODE=off
+if "$ANDROID_HOME/emulator/emulator" -accel-check > "$RUNNER_TEMP/accel-check.log" 2>&1; then
+  ACCEL_MODE=on
 fi
 if [ "$ACCEL_MODE" = "on" ]; then
   echo "KVM is available. Android Emulator will use hardware acceleration."
 else
   echo "::warning::KVM is not available on this runner; Android will use software emulation and may be very slow."
+  cat "$RUNNER_TEMP/accel-check.log" || true
   export ANDROID_I_WANT_MY_TCG=yes
 fi
 
@@ -117,16 +118,23 @@ if [ "$AUDIO_AVAILABLE" = "0" ]; then
 fi
 
 echo "Starting Android 4.4 emulator..."
+EMULATOR_AUDIO_ENV=""
+EMULATOR_AUDIO_FLAG=""
+if [ "$AUDIO_AVAILABLE" = "1" ]; then
+  EMULATOR_AUDIO_ENV="PULSE_SINK=vm_audio QEMU_AUDIO_DRV=pa"
+else
+  EMULATOR_AUDIO_FLAG="-no-audio"
+fi
 if [ "$ACCEL_MODE" = "off" ]; then
-  nohup env PULSE_SINK=vm_audio QEMU_AUDIO_DRV=pa ANDROID_I_WANT_MY_TCG=yes \
+  nohup env $EMULATOR_AUDIO_ENV ANDROID_I_WANT_MY_TCG=yes \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel off \
     -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 \
-    > "$RUNNER_TEMP/emulator.log" 2>&1 &
+    $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
-  nohup env PULSE_SINK=vm_audio QEMU_AUDIO_DRV=pa \
+  nohup env $EMULATOR_AUDIO_ENV \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel on \
     -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 \
-    > "$RUNNER_TEMP/emulator.log" 2>&1 &
+    $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
 
