@@ -39,7 +39,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
 AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
   || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
-  || [ ! -f "$ANDROID_HOME/system-images/android-19/default/x86/system.img" ]; then
+  || [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/x86/system.img" ]; then
   echo "::error::The cached Android SDK or KitKat x86 system image is incomplete."
   echo "The prepare-android-sdk step should have installed all required packages."
   exit 1
@@ -48,7 +48,7 @@ fi
 echo "Creating KitKat AVD..."
 printf 'no\n' | "$AVDMANAGER" create avd \
   --name KitKat \
-  --package "system-images;android-19;default;x86" \
+  --package "system-images;android-19;google_apis;x86" \
   --force
 cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_CONFIG'
 hw.cpu.ncore=2
