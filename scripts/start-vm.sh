@@ -282,7 +282,12 @@ sudo cp nginx/androidvm.conf.template /etc/nginx/sites-available/androidvm
 sudo sed -i "s|__SITE_ROOT__|$GITHUB_WORKSPACE/site|g" /etc/nginx/sites-available/androidvm
 if [ -n "$VM_ACCESS_PASSWORD" ]; then
   printf '%s\n' "$(htpasswd -Bbn vm "$VM_ACCESS_PASSWORD")" | sudo tee /etc/nginx/.androidvm.htpasswd >/dev/null
-  sudo chmod 600 /etc/nginx/.androidvm.htpasswd
+  sudo chown root:www-data /etc/nginx/.androidvm.htpasswd
+  sudo chmod 640 /etc/nginx/.androidvm.htpasswd
+  if ! sudo -u www-data test -r /etc/nginx/.androidvm.htpasswd; then
+    echo "::error::Nginx worker (www-data) cannot read its Basic Auth password file."
+    exit 1
+  fi
   sudo sed -i '/__AUTH_DIRECTIVES__/c\    auth_basic "Android VM";\n    auth_basic_user_file /etc/nginx/.androidvm.htpasswd;' /etc/nginx/sites-available/androidvm
   echo "HTTP Basic Authentication is enabled (username: vm)."
 else
