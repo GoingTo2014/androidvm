@@ -52,7 +52,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.android-sdk
-          key: ${{ runner.os }}-android-sdk-kitkat-x86-v2
+          key: ${{ runner.os }}-android-sdk-kitkat-google-apis-x86-v3
           restore-keys: |
             ${{ runner.os }}-android-sdk-kitkat-x86-
 
@@ -64,7 +64,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.android-sdk
-          key: ${{ runner.os }}-android-sdk-kitkat-x86-v2
+          key: ${{ runner.os }}-android-sdk-kitkat-google-apis-x86-v3
 
       - name: Start KitKat desktop and tunnel
         env:
