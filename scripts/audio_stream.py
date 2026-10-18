@@ -44,6 +44,7 @@ async def broadcast_loop(stop_event):
         "-ac", "1",
         "-ar", str(SAMPLE_RATE),
         "-acodec", "pcm_s16le",
+        "-flush_packets", "1",
         "-f", "s16le",
         "pipe:1",
     ]
