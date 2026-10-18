@@ -29,19 +29,19 @@ yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
   || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
-  || [ ! -f "$ANDROID_HOME/system-images/android-19/default/x86/system.img" ]; then
-  echo "Installing missing Android SDK packages (emulator, platform-tools, KitKat x86)..."
+  || [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/x86/system.img" ]; then
+  echo "Installing missing Android SDK packages (emulator, platform-tools, KitKat Google APIs x86)..."
   "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
     "platform-tools" \
     "emulator" \
-    "system-images;android-19;default;x86"
+    "system-images;android-19;google_apis;x86"
 else
   echo "Android SDK, emulator, and KitKat image are already cached."
 fi
 
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
   || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
-  || [ ! -f "$ANDROID_HOME/system-images/android-19/default/x86/system.img" ]; then
+  || [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/x86/system.img" ]; then
   echo "::error::Android SDK preparation did not produce all required packages."
   exit 1
 fi
