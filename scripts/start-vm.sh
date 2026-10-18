@@ -36,29 +36,14 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   xvfb x11vnc novnc websockify pulseaudio ffmpeg icecast2 nginx apache2-utils \
   curl unzip ca-certificates libnss3 libasound2t64 libxkbcommon-x11-0 libxcb-cursor0
 
-SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-if [ ! -x "$SDKMANAGER" ]; then
-  echo "Android SDK cache miss: downloading command-line tools..."
-  curl -fL --retry 3 --retry-delay 2 \
-    https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
-    -o "$RUNNER_TEMP/android-commandline-tools.zip"
-  mkdir -p "$RUNNER_TEMP/android-tools-unpack" "$ANDROID_HOME/cmdline-tools"
-  unzip -q "$RUNNER_TEMP/android-commandline-tools.zip" -d "$RUNNER_TEMP/android-tools-unpack"
-  rm -rf "$ANDROID_HOME/cmdline-tools/latest"
-  mv "$RUNNER_TEMP/android-tools-unpack/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-else
-  echo "Android SDK command-line tools found in cache."
+if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
+  || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
+  || [ ! -f "$ANDROID_HOME/system-images/android-19/default/x86/system.img" ]; then
+  echo "::error::The cached Android SDK or KitKat x86 system image is incomplete."
+  echo "The prepare-android-sdk step should have installed all required packages."
+  exit 1
 fi
-
-echo "Accepting Android SDK licenses..."
-yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-
-echo "Installing emulator and Android 4.4 x86 system image..."
-"$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
-  "platform-tools" \
-  "emulator" \
-  "system-images;android-19;default;x86"
 
 echo "Creating KitKat AVD..."
 printf 'no\n' | "$AVDMANAGER" create avd \
@@ -69,8 +54,8 @@ cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_CONFIG'
 hw.cpu.ncore=2
 hw.ramSize=2048
 hw.keyboard=yes
-hw.gpu.enabled=yes
-hw.gpu.mode=swiftshader
+hw.gpu.enabled=no
+hw.gpu.mode=off
 showDeviceFrame=no
 skin.dynamic=no
 disk.dataPartition.size=2G
@@ -133,12 +118,12 @@ fi
 if [ "$ACCEL_MODE" = "off" ]; then
   nohup env $EMULATOR_AUDIO_ENV ANDROID_I_WANT_MY_TCG=yes \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel off \
-    -writable-system -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 \
+    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 2 \
     $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
   nohup env $EMULATOR_AUDIO_ENV \
     "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel on \
-    -writable-system -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 \
+    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -no-metrics -memory 2048 -cores 2 \
     $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
@@ -163,8 +148,15 @@ wait_for_android() {
     sleep 2
   done
   if [ "$booted" -ne 1 ]; then
-    echo "::error::Android did not finish booting during $label. Recent emulator log:"
-    tail -n 160 "$RUNNER_TEMP/emulator.log" || true
+    echo "::error::Android did not finish booting during $label."
+    echo "ADB device status:"
+    adb devices -l || true
+    echo "ADB get-state:"
+    adb -s emulator-5554 get-state 2>&1 || true
+    echo "Recent Android logcat (if ADB is responsive):"
+    adb -s emulator-5554 logcat -d -b all -t 200 2>&1 | tail -n 200 || true
+    echo "Recent emulator and guest-kernel log:"
+    tail -n 240 "$RUNNER_TEMP/emulator.log" || true
     return 1
   fi
 }
