@@ -6,6 +6,33 @@ case "$SESSION_MINUTES" in
   *) echo "Invalid SESSION_MINUTES: $SESSION_MINUTES"; exit 2 ;;
 esac
 
+VM_RAM_MB="${VM_RAM_MB:-2048}"
+VM_CPU_CORES="${VM_CPU_CORES:-1}"
+VM_DATA_PARTITION_SIZE="${VM_DATA_PARTITION_SIZE:-2G}"
+VM_SD_CARD_ENABLED="${VM_SD_CARD_ENABLED:-disabled}"
+VM_SD_CARD_SIZE="${VM_SD_CARD_SIZE:-1G}"
+
+case "$VM_RAM_MB" in
+  1536|2048|3072|4096) ;;
+  *) echo "::error::Invalid VM_RAM_MB: $VM_RAM_MB"; exit 2 ;;
+esac
+case "$VM_CPU_CORES" in
+  1|2|4) ;;
+  *) echo "::error::Invalid VM_CPU_CORES: $VM_CPU_CORES"; exit 2 ;;
+esac
+case "$VM_DATA_PARTITION_SIZE" in
+  1G|2G|4G|8G) ;;
+  *) echo "::error::Invalid VM_DATA_PARTITION_SIZE: $VM_DATA_PARTITION_SIZE"; exit 2 ;;
+esac
+case "$VM_SD_CARD_ENABLED" in
+  disabled|enabled) ;;
+  *) echo "::error::Invalid VM_SD_CARD_ENABLED: $VM_SD_CARD_ENABLED"; exit 2 ;;
+esac
+case "$VM_SD_CARD_SIZE" in
+  256M|512M|1G|2G|4G|8G) ;;
+  *) echo "::error::Invalid VM_SD_CARD_SIZE: $VM_SD_CARD_SIZE"; exit 2 ;;
+esac
+
 export ANDROID_HOME="$HOME/.android-sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
@@ -50,16 +77,25 @@ printf 'no\n' | "$AVDMANAGER" create avd \
   --name KitKat \
   --package "system-images;android-19;google_apis;x86" \
   --force
-cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_CONFIG'
-hw.cpu.ncore=1
-hw.ramSize=2048
+cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<AVD_CONFIG
+hw.cpu.ncore=$VM_CPU_CORES
+hw.ramSize=$VM_RAM_MB
 hw.keyboard=yes
 hw.gpu.enabled=no
 hw.gpu.mode=off
 showDeviceFrame=no
 skin.dynamic=no
-disk.dataPartition.size=2G
+disk.dataPartition.size=$VM_DATA_PARTITION_SIZE
 AVD_CONFIG
+
+SDCARD_ARGS=()
+if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
+  echo "Creating $VM_SD_CARD_SIZE virtual SD card..."
+  "$ANDROID_HOME/emulator/mksdcard" -l AndroidVM "$VM_SD_CARD_SIZE" "$ANDROID_AVD_HOME/KitKat.avd/sdcard.img"
+  SDCARD_ARGS=(-sdcard "$ANDROID_AVD_HOME/KitKat.avd/sdcard.img")
+else
+  echo "Virtual SD card is disabled."
+fi
 
 echo "Starting virtual display..."
 Xvfb :99 -screen 0 1280x800x24 -ac +extension RANDR -nolisten tcp > "$RUNNER_TEMP/xvfb.log" 2>&1 &
@@ -91,9 +127,29 @@ if pulseaudio --start --exit-idle-time=-1; then
   sleep 2
   if pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM >/dev/null 2>&1 && pactl set-default-sink vm_audio; then
     if sudo sed -i "s#<source-password>[^<]*</source-password>#<source-password>$ICECAST_PASSWORD</source-password>#" /etc/icecast2/icecast.xml \
-      && sudo sed -i 's/ENABLE=false/ENABLE=true/' /etc/default/icecast2 \
-      && sudo systemctl restart icecast2; then
-      AUDIO_AVAILABLE=1
+      && sudo sed -i 's/ENABLE=false/ENABLE=true/' /etc/default/icecast2; then
+      echo "Reducing Icecast buffering for lower-latency audio..."
+      sudo python3 - <<'PY'
+import re
+from pathlib import Path
+
+config = Path("/etc/icecast2/icecast.xml")
+content = config.read_text()
+content = re.sub(r"\s*<burst-on-connect>.*?</burst-on-connect>", "", content, count=1, flags=re.S)
+for tag in ("queue-size", "burst-size"):
+    content = re.sub(r"\s*<" + tag + r">.*?</" + tag + r">", "", content, count=1, flags=re.S)
+limit_end = content.find("</limits>")
+if limit_end < 0:
+    raise SystemExit("Icecast config has no <limits> block; refusing to rewrite it.")
+settings = "    <queue-size>32768</queue-size>\n    <burst-size>4096</burst-size>\n    "
+content = content[:limit_end] + settings + content[limit_end:]
+config.write_text(content)
+PY
+      if sudo systemctl restart icecast2; then
+        AUDIO_AVAILABLE=1
+      else
+        AUDIO_AVAILABLE=0
+      fi
     else
       AUDIO_AVAILABLE=0
     fi
@@ -115,16 +171,33 @@ if [ "$AUDIO_AVAILABLE" = "1" ]; then
 else
   EMULATOR_AUDIO_FLAG="-no-audio"
 fi
+
+EMULATOR_ARGS=(
+  -avd KitKat
+  -port 5554
+  -accel "$ACCEL_MODE"
+  -writable-system
+  -no-snapshot
+  -no-boot-anim
+  -gpu off
+  -show-kernel
+  -logcat '*:E'
+  -no-metrics
+  -memory "$VM_RAM_MB"
+  -cores "$VM_CPU_CORES"
+)
+if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
+  EMULATOR_ARGS+=("${SDCARD_ARGS[@]}")
+fi
+
 if [ "$ACCEL_MODE" = "off" ]; then
   nohup env $EMULATOR_AUDIO_ENV ANDROID_I_WANT_MY_TCG=yes \
-    "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel off \
-    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -logcat '*:E' -no-metrics -memory 2048 -cores 1 \
-    $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
+    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" $EMULATOR_AUDIO_FLAG \
+    > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
   nohup env $EMULATOR_AUDIO_ENV \
-    "$ANDROID_HOME/emulator/emulator" -avd KitKat -port 5554 -accel on \
-    -writable-system -no-snapshot -no-boot-anim -gpu off -show-kernel -logcat '*:E' -no-metrics -memory 2048 -cores 1 \
-    $EMULATOR_AUDIO_FLAG > "$RUNNER_TEMP/emulator.log" 2>&1 &
+    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" $EMULATOR_AUDIO_FLAG \
+    > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
 
@@ -260,8 +333,10 @@ done
 
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
   echo "Starting live audio encoder..."
-  nohup ffmpeg -hide_banner -loglevel warning -f pulse -i vm_audio.monitor \
-    -vn -ac 2 -ar 44100 -c:a libmp3lame -b:a 96k -content_type audio/mpeg \
+  nohup ffmpeg -hide_banner -loglevel warning \
+    -thread_queue_size 16 -fflags nobuffer \
+    -f pulse -fragment_size 4096 -i vm_audio.monitor \
+    -vn -ac 2 -ar 44100 -c:a libmp3lame -b:a 96k -flush_packets 1 -content_type audio/mpeg \
     -f mp3 "icecast://source:$ICECAST_PASSWORD@127.0.0.1:8000/androidvm.mp3" \
     > "$RUNNER_TEMP/audio.log" 2>&1 &
   AUDIO_PID=$!
@@ -362,7 +437,12 @@ echo "ANDROID VM IS READY"
 echo "Open: $TUNNEL_URL"
 echo "Android: 4.4 KitKat x86"
 echo "KVM acceleration: $ACCEL_MODE"
-echo "Audio stream setup: $AUDIO_AVAILABLE"
+echo "Audio stream setup: $AUDIO_AVAILABLE (low-latency buffering)"
+echo "RAM: $VM_RAM_MB MB"
+echo "CPU cores: $VM_CPU_CORES"
+echo "Internal data storage: $VM_DATA_PARTITION_SIZE"
+echo "SD card: $VM_SD_CARD_ENABLED"
+if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then echo "SD card size: $VM_SD_CARD_SIZE"; fi
 echo "Session length: $SESSION_MINUTES minutes"
 echo "=========================================================="
 echo "The URL is temporary and allows control of the running VM. Do not share it publicly."
