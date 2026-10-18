@@ -277,9 +277,16 @@ websockify --web=/usr/share/novnc 6080 127.0.0.1:5900 > "$RUNNER_TEMP/novnc.log"
 NOVNC_PID=$!
 sleep 2
 
+echo "Preparing static homepage with Nginx-readable permissions..."
+sudo install -d -o root -g www-data -m 755 /var/www/androidvm
+sudo cp -a "$GITHUB_WORKSPACE/site/." /var/www/androidvm/
+sudo chown -R root:www-data /var/www/androidvm
+sudo find /var/www/androidvm -type d -exec chmod 755 {} +
+sudo find /var/www/androidvm -type f -exec chmod 644 {} +
+
 echo "Configuring web gateway..."
 sudo cp nginx/androidvm.conf.template /etc/nginx/sites-available/androidvm
-sudo sed -i "s|__SITE_ROOT__|$GITHUB_WORKSPACE/site|g" /etc/nginx/sites-available/androidvm
+sudo sed -i "s|__SITE_ROOT__|/var/www/androidvm|g" /etc/nginx/sites-available/androidvm
 if [ -n "$VM_ACCESS_PASSWORD" ]; then
   printf '%s\n' "$(htpasswd -Bbn vm "$VM_ACCESS_PASSWORD")" | sudo tee /etc/nginx/.androidvm.htpasswd >/dev/null
   sudo chown root:www-data /etc/nginx/.androidvm.htpasswd
