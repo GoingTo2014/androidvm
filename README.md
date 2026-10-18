@@ -6,11 +6,11 @@ AndroidVM starts a real Android 4.4 (KitKat) x86 system image on a temporary Git
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android 4.4 VM**.
-3. Click **Run workflow** and choose a session length.
+3. Click **Run workflow**, choose a session length, and set **Root access** to enabled or disabled.
 4. Open the **Start Android VM** job logs. The script prints the temporary TryCloudflare URL when the VM is ready.
 5. Open the URL and click **Play audio** to hear the VM.
 
-The workflow is manual-only: pushing commits does not start a VM. The standard GitHub-hosted x64 runner is used to keep the setup free for this public repository.
+The workflow is manual-only: pushing commits does not start a VM. The standard GitHub-hosted x64 runner is used to keep the setup free for this public repository. The Android SDK and KitKat image are cached between successful runs to reduce later setup time.
 
 ## Performance notes
 
@@ -18,6 +18,13 @@ The workflow is manual-only: pushing commits does not start a VM. The standard G
 - Startup checks for KVM. If KVM is available, the emulator uses hardware virtualization. If not, it falls back to software emulation and can be much slower.
 - The guest display uses software rendering for compatibility with the virtual display. Audio is captured from a PulseAudio null sink and served as an MP3 stream.
 - GitHub-hosted jobs can run for at most six hours. Sessions are capped at 300 minutes to leave time for setup and shutdown.
+
+## Installing APKs
+
+- Put regular APK files in `apks/`. The launcher attempts to install them with `adb install -r` after Android boots.
+- Put system APK files in `systemapks/`. The launcher temporarily obtains ADB root, remounts `/system`, copies these APKs into `/system/app`, and reboots so Android's Package Manager can scan them. This requires an emulator image that supports `adb root` and a writable system partition.
+- The workflow's **Root access** input controls whether ADB remains running as root during the session. When disabled, root is used temporarily only if system APKs need to be copied. This is ADB shell root; it does not automatically grant root privileges to every Android app.
+- APK install failures are reported in the Actions log. APKs must be compatible with Android 4.4 / API 19.
 
 ## Optional access protection
 
