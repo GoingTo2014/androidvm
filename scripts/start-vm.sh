@@ -224,7 +224,7 @@ wait_for_android "initial boot" 240
 center_emulator_window() {
   local window_id="" geometry="" width="" height="" x="" y=""
   for i in $(seq 1 30); do
-    window_id="$(wmctrl -l 2>/dev/null | awk 'BEGIN { IGNORECASE=1 } /Android Emulator/ { print $1; exit }' || true)"
+    window_id="$(wmctrl -l 2>/dev/null | grep -iE 'android emulator|kitkat' | awk 'NR==1 {print $1}' || true)"
     if [ -n "$window_id" ]; then
       geometry="$(xdotool getwindowgeometry --shell "$window_id" 2>/dev/null || true)"
       width="$(printf '%s\n' "$geometry" | awk -F= '$1=="WIDTH" {print $2}')"
