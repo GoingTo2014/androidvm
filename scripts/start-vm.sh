@@ -128,10 +128,10 @@ xsetroot -solid "#151820" || true
 openbox --sm-disable > "$RUNNER_TEMP/openbox.log" 2>&1 &
 WM_PID=$!
 sleep 2
-# Use threaded encoding and more aggressive update timing for animation-heavy screens.
-# Keep XDamage enabled; it helps x11vnc identify changed screen regions efficiently.
+# Poll more frequently and defer updates less so animation does not wait on VNC defaults.
+# -nowait_bog prevents x11vnc's adaptive long sleeps when framebuffer polling falls behind.
 x11vnc -display :99 -forever -shared -rfbport 5900 -nopw \
-  -threads -wait 5 -defer 2 -wait_ui 1 -setdefer -2 -nowait_bog \
+  -wait 10 -defer 5 -wait_ui 2 -setdefer 2 -nowait_bog \
   -quiet > "$RUNNER_TEMP/x11vnc.log" 2>&1 &
 VNC_PID=$!
 
