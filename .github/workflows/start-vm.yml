@@ -15,6 +15,14 @@ on:
           - "180"
           - "240"
           - "300"
+      root_access:
+        description: "Enable ADB root access for this VM session"
+        required: true
+        type: choice
+        default: "disabled"
+        options:
+          - "disabled"
+          - "enabled"
 
 permissions:
   contents: read
@@ -37,8 +45,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Restore Android SDK and KitKat image cache
+        id: android-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.android-sdk
+          key: ${{ runner.os }}-android-sdk-kitkat-x86-v1
+          restore-keys: |
+            ${{ runner.os }}-android-sdk-kitkat-x86-
+
+      - name: Report SDK cache status
+        run: |
+          if [ "${{ steps.android-sdk-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "Android SDK cache restored; skipping the command-line tools download."
+          else
+            echo "No exact Android SDK cache was found. This run will populate it for subsequent sessions."
+          fi
+
       - name: Start KitKat desktop and tunnel
         env:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
+          ROOT_ACCESS: ${{ inputs.root_access }}
           VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
         run: bash scripts/start-vm.sh
