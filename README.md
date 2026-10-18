@@ -1,6 +1,6 @@
 # AndroidVM — Android 4.4 in your browser
 
-AndroidVM starts a real Android 4.4 (KitKat) x86 system image on a temporary GitHub Actions runner. You interact with it through noVNC in your browser, with a separate live audio stream when the runner's audio backend is available.
+AndroidVM starts a real Android 4.4 (KitKat) Google APIs x86 system image on a temporary GitHub Actions runner. You interact with it through noVNC in your browser, with a separate live audio stream when the runner's audio backend is available.
 
 ## Start a session
 
@@ -10,11 +10,11 @@ AndroidVM starts a real Android 4.4 (KitKat) x86 system image on a temporary Git
 4. Open the **Start Android VM** job logs. The script prints the temporary TryCloudflare URL when the VM is ready.
 5. Open the URL and click **Play audio** to hear the VM.
 
-The workflow is manual-only: pushing commits does not start a VM. The standard GitHub-hosted x64 runner is used to keep the setup free for this public repository. The Android SDK and KitKat image are cached before the long-running VM session begins, so the cache can be saved even if the emulator later fails.
+The workflow is manual-only: pushing commits does not start a VM. The standard GitHub-hosted x64 runner is used to keep the setup free for this public repository. The Android SDK and KitKat Google APIs image are cached before the long-running VM session begins, so the cache can be saved even if the emulator later fails.
 
 ## Performance notes
 
-- The guest is Android 4.4 KitKat, using the x86 system image.
+- The guest is Android 4.4 KitKat, using the Google APIs x86 system image.
 - Startup checks for KVM. If KVM is available, the emulator uses hardware virtualization. If not, it falls back to software emulation and can be much slower. The KitKat guest uses its GPU renderer disabled as a compatibility workaround; the host uses KVM for CPU acceleration.
 - The guest display uses software rendering for compatibility with the virtual display. Audio is captured from a PulseAudio null sink and served as an MP3 stream.
 - GitHub-hosted jobs can run for at most six hours. Sessions are capped at 300 minutes to leave time for setup and shutdown.
