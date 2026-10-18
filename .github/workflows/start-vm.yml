@@ -89,6 +89,7 @@ jobs:
         run: |
           bash -n scripts/start-vm.sh
           bash -n scripts/prepare-android-sdk.sh
+          python3 -m py_compile scripts/audio_stream.py
 
       - name: Set up Java for Android SDK tools
         uses: actions/setup-java@v4
