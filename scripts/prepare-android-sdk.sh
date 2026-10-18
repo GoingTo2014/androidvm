@@ -6,6 +6,12 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 mkdir -p "$ANDROID_HOME/cmdline-tools" "$RUNNER_TEMP/android-tools-unpack"
 
+echo "Installing libraries required by the Android Emulator..."
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  libpulse0 libasound2t64 libx11-6 libx11-xcb1 libxcb1 \
+  libxkbcommon-x11-0 libxcb-cursor0 libgl1 libnss3
+
 SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 if [ ! -x "$SDKMANAGER" ]; then
   echo "Android SDK cache miss: downloading command-line tools..."
