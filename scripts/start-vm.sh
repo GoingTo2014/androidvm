@@ -50,9 +50,10 @@ case "$VM_GPU_MODE" in
   *) echo "::error::Invalid VM_GPU_MODE: $VM_GPU_MODE"; exit 2 ;;
 esac
 case "$BROWSER_TO_INSTALL" in
-  "None") BROWSER_MIN_API=0 ;;
-  "Firefox 68.11.0") BROWSER_MIN_API=16 ;;
-  "Chrome 81.0.4044.138"|"Opera 58.8.2878.72999") BROWSER_MIN_API=19 ;;
+  "None") BROWSER_MIN_API=0; BROWSER_MAX_API=999 ;;
+  "Firefox 68.11.0") BROWSER_MIN_API=16; BROWSER_MAX_API=999 ;;
+  "Chrome 81.0.4044.138") BROWSER_MIN_API=19; BROWSER_MAX_API=23 ;;
+  "Opera 58.8.2878.72999") BROWSER_MIN_API=19; BROWSER_MAX_API=20 ;;
   *) echo "::error::Invalid BROWSER_TO_INSTALL: $BROWSER_TO_INSTALL"; exit 2 ;;
 esac
 
@@ -64,6 +65,10 @@ mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
 source "${GITHUB_WORKSPACE:-$PWD}/scripts/android-version.sh"
 if [ "$ANDROID_API_LEVEL" -lt "$BROWSER_MIN_API" ]; then
   echo "::error::$BROWSER_TO_INSTALL requires Android API $BROWSER_MIN_API or newer; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL)."
+  exit 2
+fi
+if [ "$ANDROID_API_LEVEL" -gt "$BROWSER_MAX_API" ]; then
+  echo "::error::$BROWSER_TO_INSTALL is configured for Android API $BROWSER_MAX_API or older; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL). Choose a compatible Android release."
   exit 2
 fi
 
