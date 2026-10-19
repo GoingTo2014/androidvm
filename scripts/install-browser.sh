@@ -72,7 +72,7 @@ if [[ "$BROWSER_TO_INSTALL" == "Chrome 81.0.4044.138" ]]; then
     grep -Eo '(href|data-href|data-url)="[^"]+"' "$PAGE_PATH" |
       cut -d '"' -f 2 |
       grep -Ei 'download|\.apk|file' |
-      python3 -c 'import sys; from urllib.parse import urljoin; base="https://chrome.apk.watch/81.0.4044.138/404413801"; print("\\n".join(dict.fromkeys(urljoin(base, x.strip()) for x in sys.stdin if x.strip())))' |
+      python3 -c 'import sys; from urllib.parse import urljoin; base="https://chrome.apk.watch/81.0.4044.138/404413801"; print("\n".join(dict.fromkeys(urljoin(base, x.strip()) for x in sys.stdin if x.strip())))' |
       grep '^https://'
   )
   if [[ "${#DOWNLOAD_URLS[@]}" -eq 0 ]]; then
