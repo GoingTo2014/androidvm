@@ -447,6 +447,44 @@ for apk in "${NORMAL_APKS[@]}"; do
   fi
 done
 
+# Copy arbitrary user-provided files into Android's shared Downloads storage.
+# Preserve subdirectories so the repo's files/ tree is reflected on the device.
+FILES_DIR="${GITHUB_WORKSPACE:-$PWD}/files"
+USER_FILES=()
+if [ -d "$FILES_DIR" ]; then
+  mapfile -d '' USER_FILES < <(find "$FILES_DIR" -type f ! -name '.gitkeep' -print0 | sort -z)
+fi
+echo "Found ${#USER_FILES[@]} file(s) in files/."
+if [ "${#USER_FILES[@]}" -gt 0 ]; then
+  if ! adb -s emulator-5554 shell mkdir -p /sdcard/Download; then
+    echo "::warning::Could not prepare Android Downloads storage; files/ contents will not be copied."
+  else
+    for user_file in "${USER_FILES[@]}"; do
+      relative_path="${user_file#"$FILES_DIR"/}"
+      relative_dir="$(dirname "$relative_path")"
+      remote_dir="/sdcard/Download"
+      if [ "$relative_dir" != "." ]; then
+        remote_dir="$remote_dir/$relative_dir"
+        if ! adb -s emulator-5554 shell mkdir -p "$remote_dir"; then
+          echo "::warning::Could not create device folder for: $relative_path"
+          continue
+        fi
+      fi
+
+      if adb -s emulator-5554 push "$user_file" "$remote_dir/"; then
+        echo "Copied files/$relative_path to Android Downloads."
+        # Ask Android's media scanner to index photos, audio, and videos too.
+        encoded_path="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe="/"))' "$relative_path")"
+        adb -s emulator-5554 shell am broadcast \
+          -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+          -d "file:///sdcard/Download/$encoded_path" >/dev/null 2>&1 || true
+      else
+        echo "::warning::Failed to copy files/$relative_path to the device."
+      fi
+    done
+  fi
+fi
+
 echo "Starting Selkies H.264 desktop streaming..."
 SELKIES_ARGS=(
   --addr=127.0.0.1
