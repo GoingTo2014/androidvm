@@ -42,8 +42,12 @@ Each version has its own system-image cache. The Android SDK tools are cached se
 
 ## Audio
 
-- Selkies captures the PulseAudio output monitor and streams Opus audio alongside the desktop.
-- Audio is disabled automatically only if PulseAudio cannot be configured on the runner.
+- Selkies captures the AndroidVM PulseAudio monitor and streams Opus audio alongside the desktop.
+- The launcher checks that the monitor source actually exists, explicitly enables Selkies audio at session start, and prints the detected PulseAudio sinks/sources to the job log.
+- After Android boots, the launcher raises the startup volume from the home screen and logs Android's audio/ringer state to help make incoming-call ringtone tests audible.
+- Audio is disabled automatically only if PulseAudio capture cannot be configured on the runner.
+- If the stream is silent, check the speaker/audio toggle in Selkies' side menu and make sure the browser tab or site is not muted. Browser audio playback may also need a click/tap in the page first.
+
 
 ## Phone and tablet modes
 
