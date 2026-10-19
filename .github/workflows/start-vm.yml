@@ -31,11 +31,16 @@ on:
           - "lavapipe"
           - "swangle"
           - "off"
-      install_firefox_68:
-        description: "Download and install legacy Firefox 68.11.0 for x86 Android (Android 4.1/API 16 or newer)"
+      browser_to_install:
+        description: "Optional x86 browser APK to download and install (browser minimum Android version applies)"
         required: true
-        type: boolean
-        default: false
+        type: choice
+        default: "None"
+        options:
+          - "None"
+          - "Chrome 81.0.4044.138"
+          - "Firefox 68.11.0"
+          - "Opera 58.8.2878.72999"
       session_minutes:
         description: "How long to keep the VM running"
         required: true
@@ -137,6 +142,7 @@ jobs:
       - name: Validate launcher scripts
         run: |
           bash -n scripts/android-version.sh
+          bash -n scripts/install-browser.sh
           bash -n scripts/start-vm.sh
           bash -n scripts/prepare-android-sdk.sh
 
@@ -195,7 +201,7 @@ jobs:
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
           VM_HARDWARE_KEYBOARD: ${{ inputs.hardware_keyboard }}
           VM_GPU_MODE: ${{ inputs.gpu_mode }}
-          INSTALL_FIREFOX_68: ${{ inputs.install_firefox_68 }}
+          BROWSER_TO_INSTALL: ${{ inputs.browser_to_install }}
           VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
           VM_RAM_MB: ${{ inputs.vm_ram_mb }}
           VM_CPU_CORES: ${{ inputs.vm_cpu_cores }}
