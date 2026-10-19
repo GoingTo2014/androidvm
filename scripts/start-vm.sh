@@ -14,7 +14,7 @@ VM_SD_CARD_SIZE="${VM_SD_CARD_SIZE:-1G}"
 VM_DEVICE_MODE="${VM_DEVICE_MODE:-phone}"
 VM_HARDWARE_KEYBOARD="${VM_HARDWARE_KEYBOARD:-enabled}"
 VM_GPU_MODE="${VM_GPU_MODE:-swiftshader}"
-INSTALL_FIREFOX_68="${INSTALL_FIREFOX_68:-false}"
+BROWSER_TO_INSTALL="${BROWSER_TO_INSTALL:-None}"
 
 case "$VM_RAM_MB" in
   1536|2048|3072|4096) ;;
@@ -49,9 +49,11 @@ case "$VM_GPU_MODE" in
   auto|host|software|swiftshader|lavapipe|swangle|off) ;;
   *) echo "::error::Invalid VM_GPU_MODE: $VM_GPU_MODE"; exit 2 ;;
 esac
-case "$INSTALL_FIREFOX_68" in
-  true|false) ;;
-  *) echo "::error::Invalid INSTALL_FIREFOX_68: $INSTALL_FIREFOX_68"; exit 2 ;;
+case "$BROWSER_TO_INSTALL" in
+  "None") BROWSER_MIN_API=0 ;;
+  "Firefox 68.11.0") BROWSER_MIN_API=16 ;;
+  "Chrome 81.0.4044.138"|"Opera 58.8.2878.72999") BROWSER_MIN_API=19 ;;
+  *) echo "::error::Invalid BROWSER_TO_INSTALL: $BROWSER_TO_INSTALL"; exit 2 ;;
 esac
 
 export ANDROID_HOME="$HOME/.android-sdk"
@@ -60,8 +62,8 @@ export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
 source "${GITHUB_WORKSPACE:-$PWD}/scripts/android-version.sh"
-if [ "$INSTALL_FIREFOX_68" = "true" ] && [ "$ANDROID_API_LEVEL" -lt 16 ]; then
-  echo "::error::Firefox 68.11.0 requires Android 4.1 (API 16) or newer; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL)."
+if [ "$ANDROID_API_LEVEL" -lt "$BROWSER_MIN_API" ]; then
+  echo "::error::$BROWSER_TO_INSTALL requires Android API $BROWSER_MIN_API or newer; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL)."
   exit 2
 fi
 
@@ -456,23 +458,7 @@ for apk in "${NORMAL_APKS[@]}"; do
   fi
 done
 
-if [ "$INSTALL_FIREFOX_68" = "true" ]; then
-  FIREFOX_APK="$RUNNER_TEMP/fennec-68.11.0.en-US.android-i386.apk"
-  FIREFOX_URL="https://archive.mozilla.org/pub/mobile/releases/68.11.0/android-x86/en-US/fennec-68.11.0.en-US.android-i386.apk"
-  FIREFOX_SHA256="333a551c0e91153640c180b2e56d270bf7b07428a7a4fcf9fec3f0d83b3771cb"
-  echo "Downloading legacy Firefox 68.11.0 x86 from Mozilla's official archive..."
-  curl -fL --retry 3 --retry-delay 2 "$FIREFOX_URL" -o "$FIREFOX_APK"
-  echo "$FIREFOX_SHA256  $FIREFOX_APK" | sha256sum --check
-  echo "Installing Firefox 68.11.0..."
-  if adb -s emulator-5554 install -r "$FIREFOX_APK"; then
-    echo "Firefox 68.11.0 installed successfully."
-  else
-    echo "::error::Firefox installation failed. Check emulator logs and Android version compatibility."
-    exit 1
-  fi
-else
-  echo "Optional Firefox 68.11.0 installation is disabled."
-fi
+bash "${GITHUB_WORKSPACE:-$PWD}/scripts/install-browser.sh" "$BROWSER_TO_INSTALL" "$ANDROID_API_LEVEL" "$ANDROID_RELEASE"
 
 # Copy arbitrary user-provided files into Android's shared Downloads storage.
 # Preserve subdirectories so the repo's files/ tree is reflected on the device.
