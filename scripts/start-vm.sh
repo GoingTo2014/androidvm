@@ -46,14 +46,12 @@ mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
 
 EMULATOR_PID=""
 XVFB_PID=""
-VNC_PID=""
+SELKIES_PID=""
 WM_PID=""
-NOVNC_PID=""
-AUDIO_PID=""
 TUNNEL_PID=""
 cleanup() {
   echo "Stopping AndroidVM session processes..."
-  for pid in "$TUNNEL_PID" "$AUDIO_PID" "$NOVNC_PID" "$VNC_PID" "$WM_PID" "$EMULATOR_PID" "$XVFB_PID"; do
+  for pid in "$TUNNEL_PID" "$SELKIES_PID" "$WM_PID" "$EMULATOR_PID" "$XVFB_PID"; do
     if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
   done
   wait 2>/dev/null || true
@@ -65,9 +63,18 @@ trap 'exit 143' TERM
 echo "Installing system packages..."
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  xvfb x11vnc novnc websockify pulseaudio ffmpeg nginx apache2-utils \
-  openbox xdotool wmctrl python3-websockets \
+  xvfb pulseaudio nginx apache2-utils \
+  openbox xdotool wmctrl \
   curl unzip ca-certificates libnss3 libasound2t64 libxkbcommon-x11-0 libxcb-cursor0
+
+echo "Installing verified Selkies 2.0.0 package..."
+SELKIES_DEB="$RUNNER_TEMP/selkies-2.0.0-ubuntu24.04-amd64.deb"
+curl -fL --retry 3 --retry-delay 2 \
+  "https://github.com/selkies-project/selkies/releases/download/2.0.0/selkies-2.0.0-ubuntu24.04-amd64.deb" \
+  -o "$SELKIES_DEB"
+echo "bbaa4d71012b9374a753b7dfddc1da07e31f34b04277fe4fb3d045f18fd88391  $SELKIES_DEB" | sha256sum --check
+sudo apt-get install -y "$SELKIES_DEB"
+selkies --version
 
 AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
@@ -120,7 +127,10 @@ else
 fi
 
 echo "Starting virtual display..."
-Xvfb :99 -screen 0 1280x800x24 -ac +extension RANDR -nolisten tcp > "$RUNNER_TEMP/xvfb.log" 2>&1 &
+Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac \
+  +extension COMPOSITE +extension DAMAGE +extension GLX +extension RANDR \
+  +extension RENDER +extension MIT-SHM +extension XFIXES +extension XTEST \
+  +iglx +render -nolisten tcp -noreset > "$RUNNER_TEMP/xvfb.log" 2>&1 &
 XVFB_PID=$!
 export DISPLAY=:99
 sleep 2
@@ -128,12 +138,6 @@ xsetroot -solid "#151820" || true
 openbox --sm-disable > "$RUNNER_TEMP/openbox.log" 2>&1 &
 WM_PID=$!
 sleep 2
-# Poll more frequently and defer updates less so animation does not wait on VNC defaults.
-# -nowait_bog prevents x11vnc's adaptive long sleeps when framebuffer polling falls behind.
-x11vnc -display :99 -forever -shared -rfbport 5900 -nopw \
-  -wait 10 -defer 5 -wait_ui 2 -setdefer 2 -nowait_bog \
-  -quiet > "$RUNNER_TEMP/x11vnc.log" 2>&1 &
-VNC_PID=$!
 
 echo "Checking for KVM hardware acceleration..."
 if [ -e /dev/kvm ]; then
@@ -356,59 +360,51 @@ for apk in "${NORMAL_APKS[@]}"; do
   fi
 done
 
-if [ "$AUDIO_AVAILABLE" = "1" ]; then
-  echo "Starting low-latency PCM WebSocket audio..."
-  nohup /usr/bin/python3 "$GITHUB_WORKSPACE/scripts/audio_stream.py" \
-    > "$RUNNER_TEMP/audio.log" 2>&1 &
-  AUDIO_PID=$!
-  for i in $(seq 1 20); do
-    if grep -q "Low-latency audio WebSocket listening" "$RUNNER_TEMP/audio.log" 2>/dev/null; then
+echo "Starting Selkies H.264 desktop streaming..."
+SELKIES_ARGS=(
+  --addr=127.0.0.1
+  --port=6080
+  --enable-https=false
+  --enable-basic-auth=false
+  --mode=websockets
+  --encoder=h264enc
+  --use-cpu=true
+  --enable-resize=false
+  --framerate=60,8-60
+)
+if [ "$AUDIO_AVAILABLE" != "1" ]; then
+  echo "::warning::PulseAudio is unavailable; starting Selkies with audio disabled."
+  SELKIES_ARGS+=(--audio-enabled=false)
+fi
+nohup selkies "${SELKIES_ARGS[@]}" > "$RUNNER_TEMP/selkies.log" 2>&1 &
+SELKIES_PID=$!
+
+echo "Waiting for Selkies HTTP service..."
+SELKIES_HTTP_OK=0
+for i in $(seq 1 45); do
+  if curl --silent --show-error --fail http://127.0.0.1:6080/ \
+    -o "$RUNNER_TEMP/selkies-homepage.html"; then
+    if grep -qi "Selkies" "$RUNNER_TEMP/selkies-homepage.html"; then
+      SELKIES_HTTP_OK=1
       break
     fi
-    if ! kill -0 "$AUDIO_PID" 2>/dev/null; then
-      echo "::error::PCM audio bridge exited during startup."
-      cat "$RUNNER_TEMP/audio.log" || true
-      exit 1
-    fi
-    sleep 1
-  done
-  if ! grep -q "Low-latency audio WebSocket listening" "$RUNNER_TEMP/audio.log" 2>/dev/null; then
-    echo "::error::PCM audio bridge did not start listening."
-    cat "$RUNNER_TEMP/audio.log" || true
+  fi
+  if ! kill -0 "$SELKIES_PID" 2>/dev/null; then
+    echo "::error::Selkies exited during startup. Recent log:"
+    tail -n 160 "$RUNNER_TEMP/selkies.log" || true
     exit 1
   fi
-  /usr/bin/python3 - <<'PY'
-import asyncio
-import websockets
-
-async def verify_stream():
-    async with websockets.connect("ws://127.0.0.1:8765/audio-ws", max_size=None) as socket:
-        payload = await asyncio.wait_for(socket.recv(), timeout=5)
-        if not isinstance(payload, bytes) or len(payload) == 0:
-            raise RuntimeError("Audio bridge returned no PCM audio frames.")
-        print("PCM audio smoke test passed: received %d bytes." % len(payload))
-
-asyncio.run(verify_stream())
-PY
-else
-  echo "::warning::Skipping low-latency audio stream because PulseAudio is unavailable."
+  sleep 1
+done
+if [ "$SELKIES_HTTP_OK" -ne 1 ]; then
+  echo "::error::Selkies did not serve its expected web client."
+  cat "$RUNNER_TEMP/selkies-homepage.html" 2>/dev/null | head -n 40 || true
+  tail -n 160 "$RUNNER_TEMP/selkies.log" || true
+  exit 1
 fi
-
-echo "Starting noVNC web display..."
-websockify --web=/usr/share/novnc 6080 127.0.0.1:5900 > "$RUNNER_TEMP/novnc.log" 2>&1 &
-NOVNC_PID=$!
-sleep 2
-
-echo "Preparing static homepage with Nginx-readable permissions..."
-sudo install -d -o root -g www-data -m 755 /var/www/androidvm
-sudo cp -a "$GITHUB_WORKSPACE/site/." /var/www/androidvm/
-sudo chown -R root:www-data /var/www/androidvm
-sudo find /var/www/androidvm -type d -exec chmod 755 {} +
-sudo find /var/www/androidvm -type f -exec chmod 644 {} +
-
+echo "Selkies HTTP smoke test passed."
 echo "Configuring web gateway..."
 sudo cp nginx/androidvm.conf.template /etc/nginx/sites-available/androidvm
-sudo sed -i "s|__SITE_ROOT__|/var/www/androidvm|g" /etc/nginx/sites-available/androidvm
 if [ -n "$VM_ACCESS_PASSWORD" ]; then
   printf '%s\n' "$(htpasswd -Bbn vm "$VM_ACCESS_PASSWORD")" | sudo tee /etc/nginx/.androidvm.htpasswd >/dev/null
   sudo chown root:www-data /etc/nginx/.androidvm.htpasswd
@@ -444,12 +440,12 @@ else
     exit 1
   fi
 fi
-if ! grep -q "AndroidVM" "$RUNNER_TEMP/androidvm-homepage.html"; then
-  echo "::error::Nginx returned a response, but it was not the AndroidVM homepage."
+if ! grep -qi "Selkies" "$RUNNER_TEMP/androidvm-homepage.html"; then
+  echo "::error::Nginx returned a response, but it was not the Selkies web client."
   sudo tail -n 100 /var/log/nginx/error.log || true
   exit 1
 fi
-echo "The homepage returned HTTP 200 and contains the expected AndroidVM page."
+echo "The gateway returned the Selkies web client successfully."
 
 echo "Installing cloudflared..."
 curl -fL --retry 3 --retry-delay 2 \
@@ -484,7 +480,8 @@ echo "ANDROID VM IS READY"
 echo "Open: $TUNNEL_URL"
 echo "Android: 4.4 KitKat x86"
 echo "KVM acceleration: $ACCEL_MODE"
-echo "Audio stream setup: $AUDIO_AVAILABLE (low-latency PCM over WebSocket)"
+echo "Streaming: Selkies 2.0.0 H.264 over WebSocket (browser mouse/keyboard)"
+echo "Audio: $AUDIO_AVAILABLE (Opus through Selkies)"
 echo "RAM: $VM_RAM_MB MB"
 echo "CPU cores: $VM_CPU_CORES"
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
@@ -509,6 +506,11 @@ while [ "$REMAINING" -gt 0 ]; do
   if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
     echo "::error::Android Emulator stopped."
     tail -n 160 "$RUNNER_TEMP/emulator.log" || true
+    exit 1
+  fi
+  if ! kill -0 "$SELKIES_PID" 2>/dev/null; then
+    echo "::error::Selkies streaming server stopped."
+    tail -n 160 "$RUNNER_TEMP/selkies.log" || true
     exit 1
   fi
   sleep 30
