@@ -92,7 +92,7 @@ if [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # It supplies the tablet's 800x1280 tvdpi display, hardware identity, sensors,
   # and other profile settings; we only force landscape below.
   "$AVDMANAGER" list device > "$RUNNER_TEMP/avd-device-list.txt"
-  TABLET_DEVICE_ID="$(awk '
+  TABLET_DEVICE_SELECTION="$(awk '
     /^[[:space:]]*id:/ {
       id=$0
       sub(/^[[:space:]]*id:[[:space:]]*/, "", id)
@@ -104,22 +104,24 @@ if [ "$VM_DEVICE_MODE" = "tablet" ]; then
       sub(/^[[:space:]]*Name:[[:space:]]*/, "", name)
       gsub(/[[:space:]]+$/, "", name)
       lower=tolower(name)
-      if (lower == "nexus 7") best=id
-      else if (fallback == "" && lower ~ /7in wxga.*nexus 7/) fallback=id
-      else if (fallback == "" && lower ~ /10[.]1in wxga.*tablet/) fallback=id
-      else if (fallback == "" && lower ~ /7in wsvga.*tablet/) fallback=id
+      if (lower == "nexus 7" || lower == "nexus 7 (2012)") best=id "|" name
+      else if (fallback == "" && lower ~ /7in wxga.*nexus 7/) fallback=id "|" name
+      else if (fallback == "" && lower ~ /10[.]1in wxga.*tablet/) fallback=id "|" name
+      else if (fallback == "" && lower ~ /7in wsvga.*tablet/) fallback=id "|" name
     }
     END {
       if (best != "") print best
       else if (fallback != "") print fallback
     }
   ' "$RUNNER_TEMP/avd-device-list.txt")"
+  TABLET_PROFILE_NAME=""
+  IFS='|' read -r TABLET_DEVICE_ID TABLET_PROFILE_NAME <<< "$TABLET_DEVICE_SELECTION"
   if [ -z "$TABLET_DEVICE_ID" ]; then
     echo "::error::No predefined Nexus 7 or compatible tablet profile was found in the installed Android SDK."
     grep -i -A 2 -B 1 'nexus 7\|tablet' "$RUNNER_TEMP/avd-device-list.txt" | head -n 120 || true
     exit 1
   fi
-  echo "Using predefined Android tablet profile ID: $TABLET_DEVICE_ID"
+  echo "Using predefined Android tablet profile: $TABLET_PROFILE_NAME (ID: $TABLET_DEVICE_ID)"
   AVD_DEVICE_ARGS=(--device "$TABLET_DEVICE_ID")
 fi
 
@@ -531,7 +533,7 @@ echo "Audio: $AUDIO_AVAILABLE (Opus through Selkies)"
 echo "RAM: $VM_RAM_MB MB"
 echo "CPU cores: $VM_CPU_CORES"
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
-  echo "Device mode: Nexus 7 tablet profile (landscape; native tvdpi density)"
+  echo "Device mode: Tablet ($TABLET_PROFILE_NAME; landscape with native profile resolution/density)"
 else
   echo "Device mode: Phone (default display profile)"
 fi
