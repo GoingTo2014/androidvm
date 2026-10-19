@@ -83,7 +83,7 @@ The job checks for KVM. Without KVM, CPU emulation may be much slower. The chose
 
 ## Installing APKs
 
-- The **Browser to install** dropdown downloads and installs one optional x86 browser during startup: **Chrome 81.0.4044.138** (Android 4.4/API 19+), **Firefox 68.11.0** (Android 4.1/API 16+), or **Opera 58.8.2878.72999** (Android 4.4/API 19+). Choose **None** to skip browser installation. The APK is downloaded onto the temporary runner, checksum-verified, and installed without committing a large APK to this repository.
+- The **Browser to install** dropdown downloads and installs one optional x86 browser during startup: **Chrome 81.0.4044.138** (Android API 19–23), **Firefox 68.11.0** (Android API 16+), or **Opera 58.8.2878.72999** (Android API 19–20). Choose **None** to skip browser installation. The APK is downloaded onto the temporary runner, checksum-verified, and installed without committing a large APK to this repository. The launcher rejects versions outside each APK's listed Android compatibility range.
 - Firefox 68, Chrome 81, and Opera 58 are legacy releases without current security updates. Use them for compatibility testing, not sensitive browsing.
 - Put regular APK files in `apks/`. The launcher attempts to install them using `adb install -r` after Android boots.
 - Put system APK files in `systemapks/`. The launcher temporarily obtains ADB root, remounts `/system`, copies APKs into `/system/app`, and reboots so Package Manager can scan them.
