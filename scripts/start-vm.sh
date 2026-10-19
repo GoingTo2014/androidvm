@@ -88,9 +88,9 @@ fi
 echo "Creating KitKat AVD..."
 AVD_DEVICE_ARGS=()
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
-  # Prefer Google's real first-generation Nexus 7 hardware profile from the SDK.
-  # It supplies the tablet's 800x1280 tvdpi display, hardware identity, sensors,
-  # and other profile settings; we only force landscape below.
+  # Prefer Google's first-generation Nexus 7 hardware profile from the SDK.
+  # The selected profile supplies display geometry/density and hardware settings;
+  # the Android system image's build identity remains the KitKat emulator image.
   "$AVDMANAGER" list device > "$RUNNER_TEMP/avd-device-list.txt"
   TABLET_DEVICE_SELECTION="$(awk '
     /^[[:space:]]*id:/ {
