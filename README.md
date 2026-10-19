@@ -30,7 +30,8 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 ## Phone and tablet modes
 
 - **Phone** keeps the existing/default Android display configuration.
-- **Tablet** uses a 1024×600 landscape display at 160 dpi. Its 600 dp shortest dimension encourages Android 4.4 and apps to use tablet layouts, while leaving room for the emulator window's titlebar on the virtual desktop.
+- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android 4.4-era tablet profile. This profile supplies its native 800×1280 pixel screen, tvdpi density, device identity, and profile hardware configuration; the launcher sets landscape orientation and leaves that profile's screen geometry and density intact. If the exact Nexus 7 definition is unavailable, it tries compatible built-in tablet definitions.
+- Tablet mode enlarges the host X11 canvas to 1440×900 so the 1280×800 landscape display and emulator window decorations fit without cropping.
 
 ## Choosing VM resources
 
