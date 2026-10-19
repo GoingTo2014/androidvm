@@ -4,6 +4,7 @@ set -Eeuo pipefail
 export ANDROID_HOME="$HOME/.android-sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+source "${GITHUB_WORKSPACE:-$PWD}/scripts/android-version.sh"
 mkdir -p "$ANDROID_HOME/cmdline-tools" "$RUNNER_TEMP/android-tools-unpack"
 
 echo "Installing libraries required by the Android Emulator..."
@@ -27,24 +28,34 @@ SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 echo "Accepting Android SDK licenses..."
 yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 
-if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
-  || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
-  || [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/x86/system.img" ]; then
-  echo "Installing missing Android SDK packages (emulator, platform-tools, KitKat Google APIs x86)..."
+if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] || [ ! -x "$ANDROID_HOME/emulator/emulator" ]; then
+  echo "Installing common Android SDK packages (emulator and platform-tools)..."
   "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
     "platform-tools" \
-    "emulator" \
-    "system-images;android-19;google_apis;x86"
+    "emulator"
 else
-  echo "Android SDK, emulator, and KitKat image are already cached."
+  echo "Android platform-tools and emulator are already cached."
+fi
+
+if [ ! -f "$ANDROID_SYSTEM_IMAGE_DIR/system.img" ]; then
+  echo "Installing $ANDROID_RELEASE system image: $ANDROID_SYSTEM_IMAGE_PACKAGE"
+  # Remove only the selected image directory if a restored cache was incomplete.
+  rm -rf "$ANDROID_SYSTEM_IMAGE_DIR"
+  if ! "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "$ANDROID_SYSTEM_IMAGE_PACKAGE"; then
+    echo "::error::Could not install $ANDROID_RELEASE from the official Android SDK package $ANDROID_SYSTEM_IMAGE_PACKAGE."
+    echo "::error::That legacy system image may no longer be downloadable from Google's SDK repository."
+    exit 1
+  fi
+else
+  echo "$ANDROID_RELEASE system image is already cached."
 fi
 
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
   || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
-  || [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/x86/system.img" ]; then
-  echo "::error::Android SDK preparation did not produce all required packages."
+  || [ ! -f "$ANDROID_SYSTEM_IMAGE_DIR/system.img" ]; then
+  echo "::error::Android SDK preparation did not produce all required packages for $ANDROID_RELEASE."
   exit 1
 fi
 
 "$ANDROID_HOME/emulator/emulator" -version
-echo "Android SDK preparation complete."
+echo "$ANDROID_RELEASE SDK preparation complete."
