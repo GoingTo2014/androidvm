@@ -207,24 +207,42 @@ else
 fi
 
 AUDIO_AVAILABLE=0
+AUDIO_DEVICE_NAME=vm_audio.monitor
 if pulseaudio --start --exit-idle-time=-1; then
   sleep 1
-  if pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM >/dev/null 2>&1 \
-    && pactl set-default-sink vm_audio; then
-    AUDIO_AVAILABLE=1
+  AUDIO_MODULE_ID="$(pactl load-module module-null-sink sink_name=vm_audio sink_properties=device.description=AndroidVM 2>&1 || true)"
+  if [[ "$AUDIO_MODULE_ID" =~ ^[0-9]+$ ]] && pactl set-default-sink vm_audio; then
+    sleep 1
+    if pactl list short sources | awk '$2 == "vm_audio.monitor" { found=1 } END { exit !found }'; then
+      AUDIO_AVAILABLE=1
+      echo "PulseAudio capture source is ready: $AUDIO_DEVICE_NAME"
+      pactl list short sinks || true
+      pactl list short sources || true
+    else
+      echo "::warning::The AndroidVM PulseAudio sink exists, but its monitor source was not found."
+      pactl list short sources || true
+    fi
+  else
+    echo "::warning::Could not create/set the AndroidVM PulseAudio sink."
+    pactl list short sinks || true
+    pactl list short sources || true
   fi
+else
+  echo "::warning::PulseAudio failed to start."
 fi
 if [ "$AUDIO_AVAILABLE" = "0" ]; then
-  echo "::warning::PulseAudio could not be configured; VM audio will be unavailable."
+  echo "::warning::PulseAudio capture is unavailable; VM audio will be disabled."
 fi
 
 echo "Starting $ANDROID_RELEASE emulator..."
-EMULATOR_AUDIO_ENV=""
-EMULATOR_AUDIO_FLAG=""
+EMULATOR_AUDIO_ENV=()
+EMULATOR_AUDIO_ARGS=()
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
-  EMULATOR_AUDIO_ENV="PULSE_SINK=vm_audio QEMU_AUDIO_DRV=pa"
+  EMULATOR_AUDIO_ENV=(PULSE_SINK=vm_audio QEMU_AUDIO_DRV=pa)
+  echo "Android Emulator audio backend: PulseAudio (vm_audio)"
 else
-  EMULATOR_AUDIO_FLAG="-no-audio"
+  EMULATOR_AUDIO_ARGS=(-no-audio)
+  echo "::warning::Android Emulator will start with audio disabled because PulseAudio capture is unavailable."
 fi
 
 EMULATOR_ARGS=(
@@ -246,12 +264,12 @@ if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
 fi
 
 if [ "$ACCEL_MODE" = "off" ]; then
-  nohup env $EMULATOR_AUDIO_ENV ANDROID_I_WANT_MY_TCG=yes \
-    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" $EMULATOR_AUDIO_FLAG \
+  nohup env "${EMULATOR_AUDIO_ENV[@]}" ANDROID_I_WANT_MY_TCG=yes \
+    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" "${EMULATOR_AUDIO_ARGS[@]}" \
     > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
-  nohup env $EMULATOR_AUDIO_ENV \
-    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" $EMULATOR_AUDIO_FLAG \
+  nohup env "${EMULATOR_AUDIO_ENV[@]}" \
+    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" "${EMULATOR_AUDIO_ARGS[@]}" \
     > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
@@ -327,6 +345,15 @@ center_emulator_window() {
 center_emulator_window
 adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
 adb -s emulator-5554 shell input keyevent 82 || true
+echo "Raising Android's startup volume so ringtone tests are audible..."
+# On the home screen these key events raise the ring volume on legacy Android
+# releases instead of leaving a newly created emulator effectively silent.
+for _ in 1 2 3 4 5; do
+  adb -s emulator-5554 shell input keyevent 24 >/dev/null 2>&1 || true
+done
+sleep 1
+echo "Android audio stream and ringer state:"
+adb -s emulator-5554 shell dumpsys audio 2>/dev/null | grep -iE 'ring|ringer|stream.*(volume|music)|volume.*stream' | head -n 80 || true
 echo "$ANDROID_RELEASE booted successfully."
 
 ROOT_ACCESS="${ROOT_ACCESS:-disabled}"
@@ -425,7 +452,8 @@ SELKIES_ARGS=(
   --framerate=60,8-60
 )
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
-  SELKIES_ARGS+=(--audio-device-name=vm_audio.monitor)
+  SELKIES_ARGS+=(--audio-enabled=true --audio-on-start=true "--audio-device-name=$AUDIO_DEVICE_NAME")
+  echo "Selkies audio streaming enabled; capturing $AUDIO_DEVICE_NAME."
 else
   echo "::warning::PulseAudio is unavailable; starting Selkies with audio disabled."
   SELKIES_ARGS+=(--audio-enabled=false)
