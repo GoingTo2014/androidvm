@@ -144,9 +144,10 @@ if [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # 1440x900 is the host canvas so a 1280x800 tablet window plus its Openbox titlebar fits.
   cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_TABLET_CONFIG'
 hw.initialOrientation=landscape
-hw.keyboard=no
+# Accept the computer's physical keyboard in the emulator, as on a tablet with an external keyboard.
+hw.keyboard=yes
 AVD_TABLET_CONFIG
-  echo "Configured genuine Android tablet profile in landscape; original profile display density/resolution retained."
+  echo "Configured genuine Android tablet profile in landscape; physical keyboard input enabled."
 else
   # Preserve the existing phone behavior and browser keyboard support.
   cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_PHONE_CONFIG'
