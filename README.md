@@ -13,18 +13,19 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 
 ## Display and window controls
 
-- The noVNC display fills the webpage; browser full-screen mode is not required.
+- Selkies 2.0.0 captures the existing X11 desktop and provides the browser UI, H.264 video, audio, and mouse/keyboard input. The official Ubuntu 24.04 package is installed and its SHA-256 checksum is verified at startup.
+- The first deployment uses Selkies' single-port WebSocket transport with H.264/WebCodecs, which works through the existing TryCloudflare HTTP tunnel without additional media ports or a TURN server.
+- The stream targets up to 60 FPS; actual frame rate depends on CPU encoding capacity, runner load, browser decoding, and network conditions.
 - The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward.
-- The noVNC control bar remains available for keyboard, settings, power, clipboard, and disconnect controls.
-- The emulator runs in an isolated Xvfb display, streamed through x11vnc and noVNC.
-- The VNC capture loop uses a 10 ms poll, 5 ms update deferral, faster interactive update handling, and disables x11vnc's adaptive long-sleep fallback when capture falls behind. noVNC uses JPEG quality 5 and compression level 1 to favor responsiveness over image fidelity. Actual FPS still depends on runner load and network conditions.
+- Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings.
+- The emulator runs in an isolated Xvfb display with the X11 extensions Selkies needs for capture and input.
+
+**About WebRTC:** Selkies also supports WebRTC, but this first deployment uses H.264 over its single-port WebSocket transport. WebRTC requires separately reachable media ports or a configured TURN relay; TryCloudflare's HTTP tunnel alone does not provide that path. We can enable WebRTC once a suitable relay is configured.
 
 ## Audio
 
-- Audio is sent as raw mono PCM frames over a WebSocket, instead of MP3 over Icecast and the browser's media-element buffering path.
-- FFmpeg captures the PulseAudio monitor at 22.05 kHz / 16-bit. Small packets are scheduled through the Web Audio API with a short queue; stale scheduled audio is dropped if the browser falls behind.
-- The page attempts to start audio automatically. Chrome can block audible autoplay until the first interaction; if that happens, the first normal click, tap, or keypress in the emulator retries audio without a separate Play button.
-- The startup step runs a local WebSocket smoke test and reports how many bytes arrived. Network and device output latency can still vary.
+- Selkies captures the PulseAudio output monitor and streams Opus audio alongside the desktop.
+- Audio is disabled automatically only if PulseAudio cannot be configured on the runner.
 
 ## Phone and tablet modes
 
@@ -53,8 +54,8 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 
 ## Troubleshooting
 
-- **Audio is missing:** check the startup log for the PCM WebSocket smoke test and PulseAudio/FFmpeg errors.
-- **Audio delay:** the direct PCM path eliminates MP3/Icecast buffering, but browser scheduling and network latency can still add delay.
+- **The stream does not load:** check the Selkies HTTP smoke test and `selkies.log` in the job output.
+- **Audio is missing:** check the PulseAudio setup message and `selkies.log`.
 - **No SD card:** confirm that the SD card input is enabled in the workflow form.
 - **The URL does not load:** it exists only while the workflow is running. Start a new session to receive a new URL.
 - **The VM stops:** the selected duration expires, the workflow is cancelled, or GitHub's job limit is reached.
@@ -62,7 +63,5 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 ## Project layout
 
 - `.github/workflows/start-vm.yml` — manual session and resource options.
-- `scripts/start-vm.sh` — emulator, lightweight window manager, noVNC, audio and tunnel launcher.
-- `scripts/audio_stream.py` — low-latency PCM WebSocket audio bridge.
-- `nginx/androidvm.conf.template` — gateway for the webpage, noVNC and WebSocket audio.
-- `site/index.html` — minimal full-viewport display and audio scheduler.
+- `scripts/start-vm.sh` — emulator, lightweight window manager, Selkies installation and tunnel launcher.
+- `nginx/androidvm.conf.template` — authenticated reverse proxy for Selkies and its WebSocket transport.
