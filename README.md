@@ -5,7 +5,7 @@ AndroidVM starts a selectable Android emulator system image on a temporary GitHu
 ## Start a session
 
 1. Open the repository's **Actions** tab.
-2. Select **Start Android 4.4 VM** and click **Run workflow**.
+2. Select **Start Android VM** and click **Run workflow**.
 3. Choose the Android version, device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
@@ -48,7 +48,7 @@ Each version has its own system-image cache. The Android SDK tools are cached se
 ## Phone and tablet modes
 
 - **Phone** keeps the existing/default Android display configuration.
-- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android-era tablet hardware profile compatible with KitKat. When available, it supplies the Nexus 7's 800×1280 pixel screen, tvdpi density, and hardware-profile settings; the launcher sets landscape orientation and leaves the profile's screen geometry and density intact. If that profile is unavailable, it tries compatible built-in tablet definitions. The selected Android system image retains its own build identity; choosing the Nexus 7 hardware profile does not turn it into a retail Nexus 7 ROM.
+- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android-era tablet hardware profile that supplies tablet geometry when paired with the selected system image. When available, it supplies the Nexus 7's 800×1280 pixel screen, tvdpi density, and hardware-profile settings; the launcher sets landscape orientation and leaves the profile's screen geometry and density intact. If that profile is unavailable, it tries compatible built-in tablet definitions. The selected Android system image retains its own build identity; choosing the Nexus 7 hardware profile does not turn it into a retail Nexus 7 ROM.
 - Tablet mode enlarges the host X11 canvas to 1440×900 so the 1280×800 landscape display and emulator window decorations fit without cropping.
 
 ## Choosing VM resources
