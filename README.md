@@ -6,7 +6,7 @@ AndroidVM starts a selectable Android emulator system image on a temporary GitHu
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android VM** and click **Run workflow**.
-3. Choose the Android version, device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose the Android version, graphics rendering mode, device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
 The workflow is manual-only. Android 4.4 KitKat and Phone mode are the defaults. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
@@ -55,8 +55,23 @@ Each version has its own system-image cache. The Android SDK tools are cached se
 - **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android-era tablet hardware profile that supplies tablet geometry when paired with the selected system image. When available, it supplies the Nexus 7's 800×1280 pixel screen, tvdpi density, and hardware-profile settings; the launcher sets landscape orientation and leaves the profile's screen geometry and density intact. If that profile is unavailable, it tries compatible built-in tablet definitions. The selected Android system image retains its own build identity; choosing the Nexus 7 hardware profile does not turn it into a retail Nexus 7 ROM.
 - Tablet mode enlarges the host X11 canvas to 1440×900 so the 1280×800 landscape display and emulator window decorations fit without cropping.
 
+## Graphics rendering modes
+
+The manual workflow exposes a **Graphics mode** option. The default is `swiftshader`, a software renderer that works on headless cloud runners and can provide the OpenGL ES rendering older games require. Rendering is performed by the runner, not by your own computer's GPU.
+
+- **`auto`:** Let the emulator choose a suitable renderer.
+- **`host`:** Use the runner's host graphics driver; potentially faster, but it may be unavailable or unreliable on a headless runner.
+- **`software`:** Let the emulator select a suitable software rendering backend.
+- **`swiftshader`:** Software rendering for GLES and Vulkan; recommended starting point for this cloud setup.
+- **`lavapipe`:** Mesa-based software renderer; support depends on the emulator build and graphics features used.
+- **`swangle`:** SwiftShader software rendering through ANGLE; support depends on the emulator build.
+- **`off`:** Keep GPU rendering disabled, matching the previous behavior; games that require OpenGL ES may fail to launch.
+
+The legacy `swiftshader_indirect`, `guest`, `angle_indirect`, and `swangle_indirect` modes are not offered because current Android Emulator documentation marks them deprecated. Older emulator builds may accept modes that newer versions no longer support.
+
 ## Choosing VM resources
 
+- **Graphics mode:** `swiftshader` (default), `auto`, `host`, `software`, `lavapipe`, `swangle`, or `off`.
 - **Device form factor:** Phone (default) or Tablet.
 - **Hardware keyboard:** Enabled (default) or disabled.
 - **RAM:** 1536, 2048, 3072, or 4096 MB.
