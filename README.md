@@ -6,7 +6,7 @@ AndroidVM starts a selectable Android emulator system image on a temporary GitHu
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android VM** and click **Run workflow**.
-3. Choose the Android version, graphics rendering mode, device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose the Android version, graphics rendering mode, optional Firefox 68.11.0 installation, device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
 The workflow is manual-only. Android 4.4 KitKat and Phone mode are the defaults. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
@@ -83,6 +83,8 @@ The job checks for KVM. Without KVM, CPU emulation may be much slower. The chose
 
 ## Installing APKs
 
+- Optional **Install Firefox 68.11.0** workflow toggle downloads the official Mozilla Firefox 68.11.0 x86 APK during the run, verifies its SHA-256 checksum against Mozilla's published release checksum, and installs it without requiring the 51 MB file to be committed to this repository. It requires Android 4.1 (API 16) or newer.
+- Firefox 68 is obsolete and no longer receives security updates; use it for legacy compatibility testing only, not sensitive browsing.
 - Put regular APK files in `apks/`. The launcher attempts to install them using `adb install -r` after Android boots.
 - Put system APK files in `systemapks/`. The launcher temporarily obtains ADB root, remounts `/system`, copies APKs into `/system/app`, and reboots so Package Manager can scan them.
 - Put any other files in `files/`—for example, videos, music, images, documents, ZIPs, or test files. After Android boots, the launcher copies them into the device's shared `Download` storage, preserving subfolders. Photos, music, and videos are also submitted to Android's media scanner so compatible media apps can discover them.
