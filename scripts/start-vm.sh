@@ -49,6 +49,7 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
+source "${GITHUB_WORKSPACE:-$PWD}/scripts/android-version.sh"
 
 EMULATOR_PID=""
 XVFB_PID=""
@@ -85,13 +86,13 @@ selkies --version
 AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
   || [ ! -x "$ANDROID_HOME/emulator/emulator" ] \
-  || [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/x86/system.img" ]; then
-  echo "::error::The cached Android SDK or KitKat x86 system image is incomplete."
+  || [ ! -f "$ANDROID_SYSTEM_IMAGE_DIR/system.img" ]; then
+  echo "::error::The cached Android SDK or selected system image for $ANDROID_RELEASE is incomplete."
   echo "The prepare-android-sdk step should have installed all required packages."
   exit 1
 fi
 
-echo "Creating KitKat AVD..."
+echo "Creating $ANDROID_RELEASE AVD..."
 AVD_DEVICE_ARGS=()
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # Prefer Google's first-generation Nexus 7 hardware profile from the SDK.
@@ -132,11 +133,11 @@ if [ "$VM_DEVICE_MODE" = "tablet" ]; then
 fi
 
 printf 'no\n' | "$AVDMANAGER" create avd \
-  --name KitKat \
-  --package "system-images;android-19;google_apis;x86" \
+  --name "$ANDROID_AVD_NAME" \
+  --package "$ANDROID_SYSTEM_IMAGE_PACKAGE" \
   "${AVD_DEVICE_ARGS[@]}" \
   --force
-cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<AVD_CONFIG
+cat >> "$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/config.ini" <<AVD_CONFIG
 hw.cpu.ncore=$VM_CPU_CORES
 hw.ramSize=$VM_RAM_MB
 hw.keyboard=$HW_KEYBOARD_CONFIG
@@ -149,13 +150,13 @@ AVD_CONFIG
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # Keep the real profile's native pixels and tvdpi density; rotate it to landscape.
   # 1440x900 is the host canvas so a 1280x800 tablet window plus its Openbox titlebar fits.
-  cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_TABLET_CONFIG'
+  cat >> "$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/config.ini" <<'AVD_TABLET_CONFIG'
 hw.initialOrientation=landscape
 AVD_TABLET_CONFIG
-  echo "Configured genuine Android tablet profile in landscape; physical keyboard input enabled."
+  echo "Configured tablet hardware profile in landscape; hardware keyboard setting: $VM_HARDWARE_KEYBOARD."
 else
   # Preserve the existing phone behavior and browser keyboard support.
-  cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_PHONE_CONFIG'
+  cat >> "$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/config.ini" <<'AVD_PHONE_CONFIG'
 skin.dynamic=no
 AVD_PHONE_CONFIG
   echo "Using the existing default phone display profile."
@@ -164,8 +165,8 @@ fi
 SDCARD_ARGS=()
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
   echo "Creating $VM_SD_CARD_SIZE virtual SD card..."
-  "$ANDROID_HOME/emulator/mksdcard" -l AndroidVM "$VM_SD_CARD_SIZE" "$ANDROID_AVD_HOME/KitKat.avd/sdcard.img"
-  SDCARD_ARGS=(-sdcard "$ANDROID_AVD_HOME/KitKat.avd/sdcard.img")
+  "$ANDROID_HOME/emulator/mksdcard" -l AndroidVM "$VM_SD_CARD_SIZE" "$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/sdcard.img"
+  SDCARD_ARGS=(-sdcard "$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/sdcard.img")
 else
   echo "Virtual SD card is disabled."
 fi
@@ -217,7 +218,7 @@ if [ "$AUDIO_AVAILABLE" = "0" ]; then
   echo "::warning::PulseAudio could not be configured; VM audio will be unavailable."
 fi
 
-echo "Starting Android 4.4 emulator..."
+echo "Starting $ANDROID_RELEASE emulator..."
 EMULATOR_AUDIO_ENV=""
 EMULATOR_AUDIO_FLAG=""
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
@@ -227,7 +228,7 @@ else
 fi
 
 EMULATOR_ARGS=(
-  -avd KitKat
+  -avd "$ANDROID_AVD_NAME"
   -port 5554
   -accel "$ACCEL_MODE"
   -writable-system
@@ -303,7 +304,7 @@ wait_for_android "initial boot" 240
 center_emulator_window() {
   local window_id="" geometry="" width="" height="" x="" y=""
   for i in $(seq 1 30); do
-    window_id="$(wmctrl -l 2>/dev/null | grep -iE 'android emulator|kitkat' | awk 'NR==1 {print $1}' || true)"
+    window_id="$(wmctrl -l 2>/dev/null | grep -iE "android emulator|${ANDROID_AVD_NAME}" | awk 'NR==1 {print $1}' || true)"
     if [ -n "$window_id" ]; then
       geometry="$(xdotool getwindowgeometry --shell "$window_id" 2>/dev/null || true)"
       width="$(printf '%s\n' "$geometry" | awk -F= '$1=="WIDTH" {print $2}')"
@@ -326,7 +327,7 @@ center_emulator_window() {
 center_emulator_window
 adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
 adb -s emulator-5554 shell input keyevent 82 || true
-echo "Android 4.4 booted successfully."
+echo "$ANDROID_RELEASE booted successfully."
 
 ROOT_ACCESS="${ROOT_ACCESS:-disabled}"
 mapfile -d '' NORMAL_APKS < <(find "$GITHUB_WORKSPACE/apks" -maxdepth 1 -type f -iname '*.apk' -print0 | sort -z)
@@ -406,7 +407,7 @@ for apk in "${NORMAL_APKS[@]}"; do
   if adb -s emulator-5554 install -r "$apk"; then
     echo "APK installed: $(basename "$apk")"
   else
-    echo "::warning::Could not install normal APK: $(basename "$apk"). Check that it supports Android 4.4."
+    echo "::warning::Could not install normal APK: $(basename "$apk"). Check that it supports $ANDROID_RELEASE (API $ANDROID_API_LEVEL)."
   fi
 done
 
@@ -531,7 +532,7 @@ echo ""
 echo "=========================================================="
 echo "ANDROID VM IS READY"
 echo "Open: $TUNNEL_URL"
-echo "Android: 4.4 KitKat x86"
+echo "Android: $ANDROID_RELEASE, API $ANDROID_API_LEVEL, $ANDROID_ARCH"
 echo "KVM acceleration: $ACCEL_MODE"
 echo "Streaming: Selkies 2.0.0 H.264 over WebSocket (browser mouse/keyboard)"
 echo "Audio: $AUDIO_AVAILABLE (Opus through Selkies)"
