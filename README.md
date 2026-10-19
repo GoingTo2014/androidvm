@@ -1,15 +1,33 @@
-# AndroidVM — Android 4.4 in your browser
+# AndroidVM — Classic Android in your browser
 
-AndroidVM starts Android 4.4 (KitKat) Google APIs x86 on a temporary GitHub Actions runner. The webpage shows the remote desktop edge-to-edge, without an additional dashboard.
+AndroidVM starts a selectable Android emulator system image on a temporary GitHub Actions runner. Android 4.4 (KitKat) remains the default. The webpage shows the remote desktop edge-to-edge, without an additional dashboard.
 
 ## Start a session
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android 4.4 VM** and click **Run workflow**.
-3. Choose the device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose the Android version, device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
-The workflow is manual-only. Phone mode is the default. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
+The workflow is manual-only. Android 4.4 KitKat and Phone mode are the defaults. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
+
+## Android versions
+
+The first batch offers these official Google APIs x86 system images:
+
+- Android 2.3.3 Gingerbread (API 10)
+- Android 4.0.4 Ice Cream Sandwich (API 15)
+- Android 4.1 Jelly Bean (API 16)
+- Android 4.3 Jelly Bean (API 18)
+- Android 4.4 KitKat (API 19, default)
+- Android 5.0 Lollipop (API 21)
+- Android 5.1 Lollipop (API 22)
+- Android 6.0 Marshmallow (API 23)
+- Android 7.0 Nougat (API 24)
+
+Android 3.2 Honeycomb (API 13) is not included yet because the official Google APIs SDK repository does not list an installable x86 system image for that API. We can investigate a legacy/community image separately rather than offering a workflow choice that cannot install.
+
+Each version has its own system-image cache. The Android SDK tools are cached separately to avoid duplicating them for every release.
 
 ## Display and window controls
 
@@ -30,7 +48,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 ## Phone and tablet modes
 
 - **Phone** keeps the existing/default Android display configuration.
-- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android-era tablet hardware profile compatible with KitKat. When available, it supplies the Nexus 7's 800×1280 pixel screen, tvdpi density, and hardware-profile settings; the launcher sets landscape orientation and leaves the profile's screen geometry and density intact. If that profile is unavailable, it tries compatible built-in tablet definitions. The Android 4.4 system image itself remains an emulator image, so its build fingerprint/model isn't transformed into a retail Nexus 7 ROM.
+- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android-era tablet hardware profile compatible with KitKat. When available, it supplies the Nexus 7's 800×1280 pixel screen, tvdpi density, and hardware-profile settings; the launcher sets landscape orientation and leaves the profile's screen geometry and density intact. If that profile is unavailable, it tries compatible built-in tablet definitions. The selected Android system image retains its own build identity; choosing the Nexus 7 hardware profile does not turn it into a retail Nexus 7 ROM.
 - Tablet mode enlarges the host X11 canvas to 1440×900 so the 1280×800 landscape display and emulator window decorations fit without cropping.
 
 ## Choosing VM resources
@@ -38,7 +56,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 - **Device form factor:** Phone (default) or Tablet.
 - **Hardware keyboard:** Enabled (default) or disabled.
 - **RAM:** 1536, 2048, 3072, or 4096 MB.
-- **CPU cores:** 1, 2, or 4. One core is the default for KitKat compatibility.
+- **CPU cores:** 1, 2, or 4. One core is the default to keep resource use low on the hosted runner. Older releases may behave differently with newer emulator tools.
 - **Internal data storage:** 1, 2, 4, or 8 GB.
 - **SD card:** optional, 256 MB, 512 MB, 1 GB, 2 GB, 4 GB, or 8 GB. When enabled, the launcher creates and attaches a virtual SD image.
 
@@ -48,7 +66,7 @@ The job checks for KVM. Without KVM, CPU emulation may be much slower. The chose
 
 - Put regular APK files in `apks/`. The launcher attempts to install them using `adb install -r` after Android boots.
 - Put system APK files in `systemapks/`. The launcher temporarily obtains ADB root, remounts `/system`, copies APKs into `/system/app`, and reboots so Package Manager can scan them.
-- **Root access** controls whether ADB remains root for the session. It is ADB shell root; it does not automatically grant root privileges to every app. APKs must support Android 4.4 / API 19.
+- **Root access** controls whether ADB remains root for the session. It is ADB shell root; it does not automatically grant root privileges to every app. APKs must support the Android version selected for the session.
 
 ## Optional access protection
 
@@ -56,6 +74,7 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 
 ## Troubleshooting
 
+- **The selected Android image fails to install:** check `sdkmanager` output. Some historic images may no longer be available from Google's SDK repository.
 - **The stream does not load:** check the Selkies HTTP smoke test and `selkies.log` in the job output.
 - **Audio is missing:** check the PulseAudio setup message and `selkies.log`.
 - **No SD card:** confirm that the SD card input is enabled in the workflow form.
