@@ -1,8 +1,23 @@
-name: Start Android 4.4 VM
+name: Start Android VM
 
 on:
   workflow_dispatch:
     inputs:
+      android_version:
+        description: "Android release to run (KitKat is the default)"
+        required: true
+        type: choice
+        default: "4.4 (API 19)"
+        options:
+          - "2.3.3 (API 10)"
+          - "4.0.4 (API 15)"
+          - "4.1 (API 16)"
+          - "4.3 (API 18)"
+          - "4.4 (API 19)"
+          - "5.0 (API 21)"
+          - "5.1 (API 22)"
+          - "6.0 (API 23)"
+          - "7.0 (API 24)"
       session_minutes:
         description: "How long to keep the VM running"
         required: true
@@ -112,27 +127,50 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Restore Android SDK and KitKat image cache
+      - name: Restore Android SDK tools cache
         id: android-sdk-cache
         uses: actions/cache/restore@v4
         with:
-          path: ~/.android-sdk
-          key: ${{ runner.os }}-android-sdk-kitkat-google-apis-x86-v3
-          restore-keys: |
-            ${{ runner.os }}-android-sdk-kitkat-x86-
+          path: |
+            ~/.android-sdk/cmdline-tools
+            ~/.android-sdk/platform-tools
+            ~/.android-sdk/emulator
+            ~/.android-sdk/licenses
+          key: ${{ runner.os }}-android-sdk-tools-v1
 
-      - name: Prepare Android SDK and KitKat system image
+      - name: Restore selected Android system image cache
+        id: android-image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android-sdk/system-images
+          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-v1
+
+      - name: Prepare Android SDK and selected system image
+        env:
+          ANDROID_VERSION: ${{ inputs.android_version }}
         run: bash scripts/prepare-android-sdk.sh
 
-      - name: Save Android SDK cache before VM session
+      - name: Save Android SDK tools cache before VM session
         if: success() && steps.android-sdk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ~/.android-sdk
-          key: ${{ runner.os }}-android-sdk-kitkat-google-apis-x86-v3
+          path: |
+            ~/.android-sdk/cmdline-tools
+            ~/.android-sdk/platform-tools
+            ~/.android-sdk/emulator
+            ~/.android-sdk/licenses
+          key: ${{ runner.os }}-android-sdk-tools-v1
 
-      - name: Start KitKat desktop and tunnel
+      - name: Save selected Android system image cache before VM session
+        if: success() && steps.android-image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android-sdk/system-images
+          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-v1
+
+      - name: Start selected Android desktop and tunnel
         env:
+          ANDROID_VERSION: ${{ inputs.android_version }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
