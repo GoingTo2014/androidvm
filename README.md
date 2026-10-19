@@ -17,7 +17,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 - The first deployment uses Selkies' single-port WebSocket transport with H.264/WebCodecs, which works through the existing TryCloudflare HTTP tunnel without additional media ports or a TURN server.
 - The stream targets up to 60 FPS; actual frame rate depends on CPU encoding capacity, runner load, browser decoding, and network conditions.
 - The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward.
-- Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings.
+- Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings. The AVD enables its hardware-keyboard setting in both phone and tablet modes, so the computer keyboard can type directly into Android without requiring the on-screen keyboard.
 - The emulator runs in an isolated Xvfb display with the X11 extensions Selkies needs for capture and input.
 
 **Try WebRTC too:** the Selkies side menu has transport switching enabled. The session starts in H.264/WebSocket mode, but you can try WebRTC from the UI; Selkies' default public TURN relay is configured in its upstream settings. WebRTC may be slower if traffic has to pass through that relay, so switch back to WebSockets if it stutters or fails. The basic TryCloudflare URL itself only exposes the web/signaling port, not arbitrary media ports.
