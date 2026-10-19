@@ -27,7 +27,7 @@ The first batch offers these official Google APIs x86 system images:
 
 Android 3.2 Honeycomb (API 13) is not included yet because the official Google APIs SDK repository does not list an installable x86 system image for that API. We can investigate a legacy/community image separately rather than offering a workflow choice that cannot install.
 
-Each version has its own system-image cache. The Android SDK tools are cached separately to avoid duplicating them for every release.
+Each Android version and system-image variant (Google APIs or Google Play Store) has a separate cache key. The Android SDK tools are cached separately to avoid duplicating them for every release.
 
 ### Google Play Store option
 
