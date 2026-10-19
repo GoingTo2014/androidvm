@@ -85,6 +85,7 @@ The job checks for KVM. Without KVM, CPU emulation may be much slower. The chose
 
 - Put regular APK files in `apks/`. The launcher attempts to install them using `adb install -r` after Android boots.
 - Put system APK files in `systemapks/`. The launcher temporarily obtains ADB root, remounts `/system`, copies APKs into `/system/app`, and reboots so Package Manager can scan them.
+- Put any other files in `files/`—for example, videos, music, images, documents, ZIPs, or test files. After Android boots, the launcher copies them into the device's shared `Download` storage, preserving subfolders. Photos, music, and videos are also submitted to Android's media scanner so compatible media apps can discover them.
 - **Root access** controls whether ADB remains root for the session. It is ADB shell root; it does not automatically grant root privileges to every app. APKs must support the Android version selected for the session.
 
 ## Optional access protection
@@ -105,4 +106,5 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 - `.github/workflows/start-vm.yml` — manual session and resource options.
 - `scripts/start-vm.sh` — emulator, lightweight window manager, Selkies installation and tunnel launcher.
 - `scripts/android-version.sh` — maps workflow choices to Android API levels, system-image packages, and AVD names.
+- `files/` — arbitrary files to copy into Android's shared Downloads storage.
 - `nginx/androidvm.conf.template` — authenticated reverse proxy for Selkies and its WebSocket transport.
