@@ -22,18 +22,21 @@ case "$BROWSER_TO_INSTALL" in
     ;;
   "Firefox 68.11.0")
     MIN_API=16
+    MAX_API=999
     APK_NAME="fennec-68.11.0.en-US.android-i386.apk"
     APK_URL="https://archive.mozilla.org/pub/mobile/releases/68.11.0/android-x86/en-US/fennec-68.11.0.en-US.android-i386.apk"
     APK_SHA256="333a551c0e91153640c180b2e56d270bf7b07428a7a4fcf9fec3f0d83b3771cb"
     ;;
   "Chrome 81.0.4044.138")
     MIN_API=19
+    MAX_API=23
     APK_NAME="chrome-81.0.4044.138-x86.apk"
     APK_URL="https://d.apkpure.com/b/APK/com.android.chrome?versionCode=404413801&from=details"
     APK_SHA256="1979345d2c581fac0e48588869207bc2ec4fa01c3d25562e85c0cea16faba4c6"
     ;;
   "Opera 58.8.2878.72999")
     MIN_API=19
+    MAX_API=20
     APK_NAME="opera-58.8.2878.72999-x86.apk"
     APK_URL="https://d.apkpure.com/b/APK/com.opera.browser?versionCode=1905822801&from=details"
     APK_SHA256="7ee73f623b5275a663dcca7b57f49a8335b58be9e4270b06affc7b1fcc927c51"
@@ -46,6 +49,10 @@ esac
 
 if [ "$ANDROID_API_LEVEL" -lt "$MIN_API" ]; then
   echo "::error::$BROWSER_TO_INSTALL requires Android API $MIN_API or newer; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL)."
+  exit 2
+fi
+if [ "$ANDROID_API_LEVEL" -gt "$MAX_API" ]; then
+  echo "::error::$BROWSER_TO_INSTALL is configured for Android API $MAX_API or older; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL). Choose a compatible Android release."
   exit 2
 fi
 
