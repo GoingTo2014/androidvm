@@ -13,6 +13,7 @@ VM_SD_CARD_ENABLED="${VM_SD_CARD_ENABLED:-disabled}"
 VM_SD_CARD_SIZE="${VM_SD_CARD_SIZE:-1G}"
 VM_DEVICE_MODE="${VM_DEVICE_MODE:-phone}"
 VM_HARDWARE_KEYBOARD="${VM_HARDWARE_KEYBOARD:-enabled}"
+VM_GPU_MODE="${VM_GPU_MODE:-swiftshader}"
 
 case "$VM_RAM_MB" in
   1536|2048|3072|4096) ;;
@@ -42,6 +43,10 @@ case "$VM_HARDWARE_KEYBOARD" in
   enabled) HW_KEYBOARD_CONFIG=yes ;;
   disabled) HW_KEYBOARD_CONFIG=no ;;
   *) echo "::error::Invalid VM_HARDWARE_KEYBOARD: $VM_HARDWARE_KEYBOARD"; exit 2 ;;
+esac
+case "$VM_GPU_MODE" in
+  auto|host|software|swiftshader|lavapipe|swangle|off) ;;
+  *) echo "::error::Invalid VM_GPU_MODE: $VM_GPU_MODE"; exit 2 ;;
 esac
 
 export ANDROID_HOME="$HOME/.android-sdk"
@@ -137,12 +142,16 @@ printf 'no\n' | "$AVDMANAGER" create avd \
   --package "$ANDROID_SYSTEM_IMAGE_PACKAGE" \
   "${AVD_DEVICE_ARGS[@]}" \
   --force
+GPU_ENABLED=yes
+if [ "$VM_GPU_MODE" = "off" ]; then
+  GPU_ENABLED=no
+fi
 cat >> "$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/config.ini" <<AVD_CONFIG
 hw.cpu.ncore=$VM_CPU_CORES
 hw.ramSize=$VM_RAM_MB
 hw.keyboard=$HW_KEYBOARD_CONFIG
-hw.gpu.enabled=no
-hw.gpu.mode=off
+hw.gpu.enabled=$GPU_ENABLED
+hw.gpu.mode=$VM_GPU_MODE
 showDeviceFrame=no
 disk.dataPartition.size=$VM_DATA_PARTITION_SIZE
 AVD_CONFIG
@@ -234,7 +243,7 @@ if [ "$AUDIO_AVAILABLE" = "0" ]; then
   echo "::warning::PulseAudio capture is unavailable; VM audio will be disabled."
 fi
 
-echo "Starting $ANDROID_RELEASE emulator..."
+echo "Starting $ANDROID_RELEASE emulator with graphics mode '$VM_GPU_MODE'..."
 EMULATOR_AUDIO_ENV=()
 EMULATOR_AUDIO_ARGS=()
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
@@ -252,7 +261,7 @@ EMULATOR_ARGS=(
   -writable-system
   -no-snapshot
   -no-boot-anim
-  -gpu off
+  -gpu "$VM_GPU_MODE"
   -show-kernel
   -logcat '*:E'
   -no-metrics
