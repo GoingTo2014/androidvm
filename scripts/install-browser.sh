@@ -31,9 +31,9 @@ case "$BROWSER_TO_INSTALL" in
     MIN_API=19
     MAX_API=23
     APK_NAME="chrome-81.0.4044.138-x86.apk"
-    APK_URL="https://d.apkpure.com/b/APK/com.android.chrome?versionCode=404413801&from=details"
-    APK_REFERER="https://apkpure.com/google-chrome/com.android.chrome"
-    APK_SHA256="1979345d2c581fac0e48588869207bc2ec4fa01c3d25562e85c0cea16faba4c6"
+    APK_PAGE_URL="https://chrome.apk.watch/81.0.4044.138/404413801"
+    APK_URL=""
+    APK_MD5="454f252bad312b8c576c7ffc6d64eb8a"
     ;;
   "Opera 58.8.2878.72999")
     MIN_API=19
@@ -60,31 +60,48 @@ fi
 
 APK_PATH="${RUNNER_TEMP:-/tmp}/$APK_NAME"
 echo "Downloading $BROWSER_TO_INSTALL for x86 from its configured archive..."
-if [[ "$APK_URL" == https://d.apkpure.com/* ]]; then
-  # APKPure's direct-download endpoint may reject curl's default User-Agent.
-  # Use browser-like headers and a listing-page referrer, then retry with its
-  # Lite site referrer if the primary request is denied.
-  APK_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
-  if ! curl -fL --retry 2 --retry-delay 2 \
-    --user-agent "$APK_USER_AGENT" \
-    --referer "$APK_REFERER" \
-    --header "Accept: application/vnd.android.package-archive,application/octet-stream,*/*" \
-    "$APK_URL" -o "$APK_PATH"; then
-    echo "::warning::APKPure rejected the first request; retrying with its Lite-site referrer."
-    rm -f "$APK_PATH"
-    if ! curl -fL --retry 1 --retry-delay 2 \
-      --user-agent "$APK_USER_AGENT" \
-      --referer "${APK_REFERER/https:\/\/apkpure.com/https:\/\/apkpure.net}" \
-      --header "Accept: application/vnd.android.package-archive,application/octet-stream,*/*" \
-      "$APK_URL" -o "$APK_PATH"; then
-      echo "::error::Could not download $BROWSER_TO_INSTALL: APKPure returned an HTTP error (often 403 when direct downloads are blocked)."
-      exit 1
-    fi
+if [[ "$BROWSER_TO_INSTALL" == "Chrome 81.0.4044.138" ]]; then
+  # Use APK.watch's exact x86 / Android 4.4+ variant page, not APKPure's
+  # direct-download endpoint which returns 403 in GitHub Actions.
+  PAGE_PATH="${RUNNER_TEMP:-/tmp}/chrome-apkwatch-page.html"
+  curl -fLsS --retry 3 --retry-delay 2 \
+    --user-agent "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36" \
+    "$APK_PAGE_URL" -o "$PAGE_PATH"
+
+  mapfile -t DOWNLOAD_URLS < <(
+    grep -Eo '(href|data-href|data-url)="[^"]+"' "$PAGE_PATH" |
+      cut -d '"' -f 2 |
+      grep -Ei 'download|\.apk|file' |
+      python3 -c 'import sys; from urllib.parse import urljoin; base="https://chrome.apk.watch/81.0.4044.138/404413801"; print("\\n".join(dict.fromkeys(urljoin(base, x.strip()) for x in sys.stdin if x.strip())))' |
+      grep '^https://'
+  )
+  if [[ "${#DOWNLOAD_URLS[@]}" -eq 0 ]]; then
+    echo "::error::APK.watch page loaded, but no download link could be extracted."
+    exit 1
   fi
+
+  downloaded=false
+  for candidate in "${DOWNLOAD_URLS[@]}"; do
+    echo "Trying APK.watch download candidate."
+    rm -f "$APK_PATH"
+    if curl -fLsS --retry 1 --retry-delay 1 \
+      --user-agent "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36" \
+      --referer "$APK_PAGE_URL" "$candidate" -o "$APK_PATH"; then
+      if file "$APK_PATH" | grep -qiE 'Android package|Zip archive'; then
+        downloaded=true
+        break
+      fi
+    fi
+  done
+  if [[ "$downloaded" != true ]]; then
+    echo "::error::Could not retrieve the Chrome APK from APK.watch. Its download endpoint may require browser-side JavaScript."
+    exit 1
+  fi
+  echo "$APK_MD5  $APK_PATH" | md5sum --check
 else
-  curl -fL --retry 3 --retry-delay 2 "$APK_URL" -o "$APK_PATH"
+  curl -fLsS --retry 3 --retry-delay 2 "$APK_URL" -o "$APK_PATH"
+  echo "$APK_SHA256  $APK_PATH" | sha256sum --check
 fi
-echo "$APK_SHA256  $APK_PATH" | sha256sum --check
 
 if ! adb -s emulator-5554 install -r "$APK_PATH"; then
   echo "::error::Could not install $BROWSER_TO_INSTALL. Check the Android version and installation logs."
