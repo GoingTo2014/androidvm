@@ -12,6 +12,7 @@ VM_DATA_PARTITION_SIZE="${VM_DATA_PARTITION_SIZE:-2G}"
 VM_SD_CARD_ENABLED="${VM_SD_CARD_ENABLED:-disabled}"
 VM_SD_CARD_SIZE="${VM_SD_CARD_SIZE:-1G}"
 VM_DEVICE_MODE="${VM_DEVICE_MODE:-phone}"
+VM_HARDWARE_KEYBOARD="${VM_HARDWARE_KEYBOARD:-enabled}"
 
 case "$VM_RAM_MB" in
   1536|2048|3072|4096) ;;
@@ -36,6 +37,11 @@ esac
 case "$VM_DEVICE_MODE" in
   phone|tablet) ;;
   *) echo "::error::Invalid VM_DEVICE_MODE: $VM_DEVICE_MODE"; exit 2 ;;
+esac
+case "$VM_HARDWARE_KEYBOARD" in
+  enabled) HW_KEYBOARD_CONFIG=yes ;;
+  disabled) HW_KEYBOARD_CONFIG=no ;;
+  *) echo "::error::Invalid VM_HARDWARE_KEYBOARD: $VM_HARDWARE_KEYBOARD"; exit 2 ;;
 esac
 
 export ANDROID_HOME="$HOME/.android-sdk"
@@ -133,6 +139,7 @@ printf 'no\n' | "$AVDMANAGER" create avd \
 cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<AVD_CONFIG
 hw.cpu.ncore=$VM_CPU_CORES
 hw.ramSize=$VM_RAM_MB
+hw.keyboard=$HW_KEYBOARD_CONFIG
 hw.gpu.enabled=no
 hw.gpu.mode=off
 showDeviceFrame=no
@@ -144,14 +151,11 @@ if [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # 1440x900 is the host canvas so a 1280x800 tablet window plus its Openbox titlebar fits.
   cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_TABLET_CONFIG'
 hw.initialOrientation=landscape
-# Accept the computer's physical keyboard in the emulator, as on a tablet with an external keyboard.
-hw.keyboard=yes
 AVD_TABLET_CONFIG
   echo "Configured genuine Android tablet profile in landscape; physical keyboard input enabled."
 else
   # Preserve the existing phone behavior and browser keyboard support.
   cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_PHONE_CONFIG'
-hw.keyboard=yes
 skin.dynamic=no
 AVD_PHONE_CONFIG
   echo "Using the existing default phone display profile."
@@ -538,6 +542,7 @@ if [ "$VM_DEVICE_MODE" = "tablet" ]; then
 else
   echo "Device mode: Phone (default display profile)"
 fi
+echo "Hardware keyboard: $VM_HARDWARE_KEYBOARD"
 echo "Internal data storage: $VM_DATA_PARTITION_SIZE"
 echo "SD card: $VM_SD_CARD_ENABLED"
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then echo "SD card size: $VM_SD_CARD_SIZE"; fi
