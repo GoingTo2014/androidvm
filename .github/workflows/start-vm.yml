@@ -18,6 +18,11 @@ on:
           - "5.1 (API 22)"
           - "6.0 (API 23)"
           - "7.0 (API 24)"
+      google_play_store:
+        description: "Use the official Google Play Store image (Android 7.0/API 24 only; root and system APK injection unavailable)"
+        required: true
+        type: boolean
+        default: false
       gpu_mode:
         description: "Graphics renderer; SwiftShader is a good choice for cloud/headless sessions"
         required: true
@@ -168,11 +173,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.android-sdk/system-images
-          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-v1
+          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-${{ inputs.google_play_store }}-v1
 
       - name: Prepare Android SDK and selected system image
         env:
           ANDROID_VERSION: ${{ inputs.android_version }}
+          ANDROID_GOOGLE_PLAY_STORE: ${{ inputs.google_play_store }}
         run: bash scripts/prepare-android-sdk.sh
 
       - name: Save Android SDK tools cache before VM session
@@ -191,11 +197,12 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.android-sdk/system-images
-          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-v1
+          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-${{ inputs.google_play_store }}-v1
 
       - name: Start selected Android desktop and tunnel
         env:
           ANDROID_VERSION: ${{ inputs.android_version }}
+          ANDROID_GOOGLE_PLAY_STORE: ${{ inputs.google_play_store }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
