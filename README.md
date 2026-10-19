@@ -20,7 +20,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 - Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings.
 - The emulator runs in an isolated Xvfb display with the X11 extensions Selkies needs for capture and input.
 
-**About WebRTC:** Selkies also supports WebRTC, but this first deployment uses H.264 over its single-port WebSocket transport. WebRTC requires separately reachable media ports or a configured TURN relay; TryCloudflare's HTTP tunnel alone does not provide that path. We can enable WebRTC once a suitable relay is configured.
+**Try WebRTC too:** the Selkies side menu has transport switching enabled. The session starts in H.264/WebSocket mode, but you can try WebRTC from the UI; Selkies' default public TURN relay is configured in its upstream settings. WebRTC may be slower if traffic has to pass through that relay, so switch back to WebSockets if it stutters or fails. The basic TryCloudflare URL itself only exposes the web/signaling port, not arbitrary media ports.
 
 ## Audio
 
