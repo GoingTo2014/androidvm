@@ -85,4 +85,5 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 
 - `.github/workflows/start-vm.yml` — manual session and resource options.
 - `scripts/start-vm.sh` — emulator, lightweight window manager, Selkies installation and tunnel launcher.
+- `scripts/android-version.sh` — maps workflow choices to Android API levels, system-image packages, and AVD names.
 - `nginx/androidvm.conf.template` — authenticated reverse proxy for Selkies and its WebSocket transport.
