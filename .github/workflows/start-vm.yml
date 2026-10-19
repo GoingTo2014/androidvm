@@ -118,6 +118,7 @@ jobs:
 
       - name: Validate launcher scripts
         run: |
+          bash -n scripts/android-version.sh
           bash -n scripts/start-vm.sh
           bash -n scripts/prepare-android-sdk.sh
 
