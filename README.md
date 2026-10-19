@@ -6,7 +6,7 @@ AndroidVM starts a selectable Android emulator system image on a temporary GitHu
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android VM** and click **Run workflow**.
-3. Choose the Android version, graphics rendering mode, browser to install (optional), device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose the Android version, whether to enable the Google Play Store (optional; Android 7.0 only), graphics rendering mode, browser to install (optional), device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
 The workflow is manual-only. Android 4.4 KitKat and Phone mode are the defaults. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
@@ -28,6 +28,12 @@ The first batch offers these official Google APIs x86 system images:
 Android 3.2 Honeycomb (API 13) is not included yet because the official Google APIs SDK repository does not list an installable x86 system image for that API. We can investigate a legacy/community image separately rather than offering a workflow choice that cannot install.
 
 Each version has its own system-image cache. The Android SDK tools are cached separately to avoid duplicating them for every release.
+
+### Google Play Store option
+
+The manual workflow has a **Google Play Store** toggle. When enabled, select **Android 7.0 (API 24)** and **Phone** mode. AndroidVM downloads the official x86 `google_apis_playstore` system image so the Play Store and Google Play services are preinstalled. The setting is off by default, and the normal Google APIs images remain unchanged.
+
+Google's Play Store images are signed with release keys and do not support ADB root. Therefore, Google Play mode rejects **Root access = enabled** and any APKs in `systemapks/`; ordinary APK installation through `apks/` remains available. Google Play Store mode is restricted to phone mode in this workflow because the legacy API 24 Play image has compatible phone hardware profiles, not the existing Nexus 7 tablet profile. <Link url="https://developer.android.com/studio/run/managing-avds" title="Android Emulator documentation"/>.
 
 ## Display and window controls
 
