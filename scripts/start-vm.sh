@@ -86,35 +86,72 @@ if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
 fi
 
 echo "Creating KitKat AVD..."
+AVD_DEVICE_ARGS=()
+if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+  # Prefer Google's real first-generation Nexus 7 hardware profile from the SDK.
+  # It supplies the tablet's 800x1280 tvdpi display, hardware identity, sensors,
+  # and other profile settings; we only force landscape below.
+  "$AVDMANAGER" list device > "$RUNNER_TEMP/avd-device-list.txt"
+  TABLET_DEVICE_ID="$(awk '
+    /^[[:space:]]*id:/ {
+      id=$0
+      sub(/^[[:space:]]*id:[[:space:]]*/, "", id)
+      if (match(id, /"[^"]+"/)) id=substr(id, RSTART+1, RLENGTH-2)
+      else sub(/[[:space:],].*$/, "", id)
+    }
+    /^[[:space:]]*Name:/ {
+      name=$0
+      sub(/^[[:space:]]*Name:[[:space:]]*/, "", name)
+      gsub(/[[:space:]]+$/, "", name)
+      lower=tolower(name)
+      if (lower == "nexus 7") best=id
+      else if (fallback == "" && lower ~ /7in wxga.*nexus 7/) fallback=id
+      else if (fallback == "" && lower ~ /10[.]1in wxga.*tablet/) fallback=id
+      else if (fallback == "" && lower ~ /7in wsvga.*tablet/) fallback=id
+    }
+    END {
+      if (best != "") print best
+      else if (fallback != "") print fallback
+    }
+  ' "$RUNNER_TEMP/avd-device-list.txt")"
+  if [ -z "$TABLET_DEVICE_ID" ]; then
+    echo "::error::No predefined Nexus 7 or compatible tablet profile was found in the installed Android SDK."
+    grep -i -A 2 -B 1 'nexus 7\|tablet' "$RUNNER_TEMP/avd-device-list.txt" | head -n 120 || true
+    exit 1
+  fi
+  echo "Using predefined Android tablet profile ID: $TABLET_DEVICE_ID"
+  AVD_DEVICE_ARGS=(--device "$TABLET_DEVICE_ID")
+fi
+
 printf 'no\n' | "$AVDMANAGER" create avd \
   --name KitKat \
   --package "system-images;android-19;google_apis;x86" \
+  "${AVD_DEVICE_ARGS[@]}" \
   --force
 cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<AVD_CONFIG
 hw.cpu.ncore=$VM_CPU_CORES
 hw.ramSize=$VM_RAM_MB
-hw.keyboard=yes
 hw.gpu.enabled=no
 hw.gpu.mode=off
 showDeviceFrame=no
-skin.dynamic=no
 disk.dataPartition.size=$VM_DATA_PARTITION_SIZE
 AVD_CONFIG
 
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
-  # At 160 dpi, 1024x600 gives Android a 600 dp smallest width, triggering tablet layouts.
-  # The landscape window is small enough to retain its titlebar on the 1280x800 virtual desktop.
+  # Keep the real profile's native pixels and tvdpi density; rotate it to landscape.
+  # 1440x900 is the host canvas so a 1280x800 tablet window plus its Openbox titlebar fits.
   cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_TABLET_CONFIG'
-hw.lcd.width=1024
-hw.lcd.height=600
-hw.lcd.density=160
 hw.initialOrientation=landscape
-skin.dynamic=yes
-skin.name=1024x600
+hw.keyboard=no
 AVD_TABLET_CONFIG
-  echo "Configured tablet mode: 1024x600 landscape at 160 dpi."
+  echo "Configured genuine Android tablet profile in landscape; original profile display density/resolution retained."
 else
-  echo "Using the default phone display profile."
+  # Preserve the existing phone behavior and browser keyboard support.
+  cat >> "$ANDROID_AVD_HOME/KitKat.avd/config.ini" <<'AVD_PHONE_CONFIG'
+hw.keyboard=yes
+skin.dynamic=no
+AVD_PHONE_CONFIG
+  echo "Using the existing default phone display profile."
 fi
 
 SDCARD_ARGS=()
@@ -126,8 +163,14 @@ else
   echo "Virtual SD card is disabled."
 fi
 
-echo "Starting virtual display..."
-Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac \
+DISPLAY_WIDTH=1280
+DISPLAY_HEIGHT=800
+if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+  DISPLAY_WIDTH=1440
+  DISPLAY_HEIGHT=900
+fi
+echo "Starting virtual display at ${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}..."
+Xvfb :99 -screen 0 "${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}x24" -s 0 -dpms -ac \
   +extension COMPOSITE +extension DAMAGE +extension GLX +extension RANDR \
   +extension RENDER +extension MIT-SHM +extension XFIXES +extension XTEST \
   +iglx +render -nolisten tcp -noreset > "$RUNNER_TEMP/xvfb.log" 2>&1 &
@@ -259,8 +302,8 @@ center_emulator_window() {
       width="$(printf '%s\n' "$geometry" | awk -F= '$1=="WIDTH" {print $2}')"
       height="$(printf '%s\n' "$geometry" | awk -F= '$1=="HEIGHT" {print $2}')"
       if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
-        x=$(( (1280 - width) / 2 ))
-        y=$(( (800 - height) / 2 ))
+        x=$(( (DISPLAY_WIDTH - width) / 2 ))
+        y=$(( (DISPLAY_HEIGHT - height) / 2 ))
         (( x < 0 )) && x=0
         (( y < 0 )) && y=0
         wmctrl -ir "$window_id" -e "0,$x,$y,-1,-1" || true
@@ -488,7 +531,7 @@ echo "Audio: $AUDIO_AVAILABLE (Opus through Selkies)"
 echo "RAM: $VM_RAM_MB MB"
 echo "CPU cores: $VM_CPU_CORES"
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
-  echo "Device mode: Tablet (1024x600 landscape, 160 dpi)"
+  echo "Device mode: Nexus 7 tablet profile (landscape; native tvdpi density)"
 else
   echo "Device mode: Phone (default display profile)"
 fi
