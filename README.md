@@ -30,7 +30,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 ## Phone and tablet modes
 
 - **Phone** keeps the existing/default Android display configuration.
-- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android 4.4-era tablet profile. This profile supplies its native 800×1280 pixel screen, tvdpi density, device identity, and profile hardware configuration; the launcher sets landscape orientation and leaves that profile's screen geometry and density intact. If the exact Nexus 7 definition is unavailable, it tries compatible built-in tablet definitions.
+- **Tablet** asks the installed Android SDK for its predefined Google **Nexus 7** hardware profile, a real Android-era tablet hardware profile compatible with KitKat. When available, it supplies the Nexus 7's 800×1280 pixel screen, tvdpi density, and hardware-profile settings; the launcher sets landscape orientation and leaves the profile's screen geometry and density intact. If that profile is unavailable, it tries compatible built-in tablet definitions. The Android 4.4 system image itself remains an emulator image, so its build fingerprint/model isn't transformed into a retail Nexus 7 ROM.
 - Tablet mode enlarges the host X11 canvas to 1440×900 so the 1280×800 landscape display and emulator window decorations fit without cropping.
 
 ## Choosing VM resources
