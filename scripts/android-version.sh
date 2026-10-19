@@ -65,5 +65,26 @@ case "$ANDROID_VERSION" in
     ;;
 esac
 
-ANDROID_SYSTEM_IMAGE_PACKAGE="system-images;android-${ANDROID_API_LEVEL};google_apis;${ANDROID_ARCH}"
-ANDROID_SYSTEM_IMAGE_DIR="${ANDROID_HOME:-$HOME/.android-sdk}/system-images/android-${ANDROID_API_LEVEL}/google_apis/${ANDROID_ARCH}"
+ANDROID_GOOGLE_PLAY_STORE="${ANDROID_GOOGLE_PLAY_STORE:-false}"
+case "$ANDROID_GOOGLE_PLAY_STORE" in
+  true|false) ;;
+  *)
+    echo "::error::ANDROID_GOOGLE_PLAY_STORE must be true or false, got: $ANDROID_GOOGLE_PLAY_STORE"
+    exit 2
+    ;;
+esac
+
+if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
+  if [ "$ANDROID_API_LEVEL" -ne 24 ]; then
+    echo "::error::The official Google Play Store x86 image is only configured for Android 7.0 (API 24) in this project."
+    echo "::error::Select Android 7.0 (API 24), or turn off Google Play Store to use the Google APIs image."
+    exit 2
+  fi
+  ANDROID_SYSTEM_IMAGE_VARIANT=google_apis_playstore
+  ANDROID_AVD_NAME="${ANDROID_AVD_NAME}PlayStore"
+else
+  ANDROID_SYSTEM_IMAGE_VARIANT=google_apis
+fi
+
+ANDROID_SYSTEM_IMAGE_PACKAGE="system-images;android-${ANDROID_API_LEVEL};${ANDROID_SYSTEM_IMAGE_VARIANT};${ANDROID_ARCH}"
+ANDROID_SYSTEM_IMAGE_DIR="${ANDROID_HOME:-$HOME/.android-sdk}/system-images/android-${ANDROID_API_LEVEL}/${ANDROID_SYSTEM_IMAGE_VARIANT}/${ANDROID_ARCH}"
