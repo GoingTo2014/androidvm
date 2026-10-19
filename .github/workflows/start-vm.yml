@@ -23,6 +23,14 @@ on:
         options:
           - "phone"
           - "tablet"
+      hardware_keyboard:
+        description: "Allow the computer's physical keyboard to type into Android"
+        required: true
+        type: choice
+        default: "enabled"
+        options:
+          - "enabled"
+          - "disabled"
       root_access:
         description: "Enable ADB root access for this VM session"
         required: true
@@ -128,6 +136,7 @@ jobs:
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
+          VM_HARDWARE_KEYBOARD: ${{ inputs.hardware_keyboard }}
           VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
           VM_RAM_MB: ${{ inputs.vm_ram_mb }}
           VM_CPU_CORES: ${{ inputs.vm_cpu_cores }}
