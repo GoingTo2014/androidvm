@@ -16,7 +16,7 @@ on:
           - "240"
           - "300"
       device_mode:
-        description: "Android device form factor"
+        description: "Phone display or predefined Nexus 7 tablet hardware profile"
         required: true
         type: choice
         default: "phone"
