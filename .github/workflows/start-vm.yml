@@ -18,6 +18,19 @@ on:
           - "5.1 (API 22)"
           - "6.0 (API 23)"
           - "7.0 (API 24)"
+      gpu_mode:
+        description: "Graphics renderer; SwiftShader is a good choice for cloud/headless sessions"
+        required: true
+        type: choice
+        default: "swiftshader"
+        options:
+          - "auto"
+          - "host"
+          - "software"
+          - "swiftshader"
+          - "lavapipe"
+          - "swangle"
+          - "off"
       session_minutes:
         description: "How long to keep the VM running"
         required: true
@@ -176,6 +189,7 @@ jobs:
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
           VM_HARDWARE_KEYBOARD: ${{ inputs.hardware_keyboard }}
+          VM_GPU_MODE: ${{ inputs.gpu_mode }}
           VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
           VM_RAM_MB: ${{ inputs.vm_ram_mb }}
           VM_CPU_CORES: ${{ inputs.vm_cpu_cores }}
