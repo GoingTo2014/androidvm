@@ -15,6 +15,7 @@ VM_DEVICE_MODE="${VM_DEVICE_MODE:-phone}"
 VM_HARDWARE_KEYBOARD="${VM_HARDWARE_KEYBOARD:-enabled}"
 VM_GPU_MODE="${VM_GPU_MODE:-swiftshader}"
 BROWSER_TO_INSTALL="${BROWSER_TO_INSTALL:-None}"
+ANDROID_GOOGLE_PLAY_STORE="${ANDROID_GOOGLE_PLAY_STORE:-false}"
 
 case "$VM_RAM_MB" in
   1536|2048|3072|4096) ;;
@@ -63,6 +64,21 @@ export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
 source "${GITHUB_WORKSPACE:-$PWD}/scripts/android-version.sh"
+if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
+  if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+    echo "::error::The official Android 7.0 Google Play image is configured for phone mode only in AndroidVM."
+    echo "::error::Choose Phone mode or disable Google Play Store to use a tablet profile."
+    exit 2
+  fi
+  if [ "${ROOT_ACCESS:-disabled}" = "enabled" ]; then
+    echo "::error::Google Play Store system images do not support ADB root. Set Root access to disabled."
+    exit 2
+  fi
+  if find "${GITHUB_WORKSPACE:-$PWD}/systemapks" -maxdepth 1 -type f -iname '*.apk' -print -quit 2>/dev/null | grep -q .; then
+    echo "::error::System APK injection requires ADB root, which is unavailable on Google Play Store images."
+    exit 2
+  fi
+fi
 if [ "$ANDROID_API_LEVEL" -lt "$BROWSER_MIN_API" ]; then
   echo "::error::$BROWSER_TO_INSTALL requires Android API $BROWSER_MIN_API or newer; selected $ANDROID_RELEASE (API $ANDROID_API_LEVEL)."
   exit 2
@@ -115,7 +131,39 @@ fi
 
 echo "Creating $ANDROID_RELEASE AVD..."
 AVD_DEVICE_ARGS=()
-if [ "$VM_DEVICE_MODE" = "tablet" ]; then
+if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
+  # Google Play API 24 images were originally published for compatible phone profiles.
+  # Prefer Nexus 5, then Nexus 5X, rather than relying on an arbitrary default profile.
+  "$AVDMANAGER" list device > "$RUNNER_TEMP/avd-device-list.txt"
+  PLAY_DEVICE_SELECTION="$(awk '
+    /^[[:space:]]*id:/ {
+      id=$0
+      sub(/^[[:space:]]*id:[[:space:]]*/, "", id)
+      if (match(id, /"[^"]+"/)) id=substr(id, RSTART+1, RLENGTH-2)
+      else sub(/[[:space:],].*$/, "", id)
+    }
+    /^[[:space:]]*Name:/ {
+      name=$0
+      sub(/^[[:space:]]*Name:[[:space:]]*/, "", name)
+      gsub(/[[:space:]]+$/, "", name)
+      lower=tolower(name)
+      if (lower == "nexus 5") best=id "|" name
+      else if (fallback == "" && lower == "nexus 5x") fallback=id "|" name
+    }
+    END {
+      if (best != "") print best
+      else if (fallback != "") print fallback
+    }
+  ' "$RUNNER_TEMP/avd-device-list.txt")"
+  IFS='|' read -r PLAY_DEVICE_ID PLAY_PROFILE_NAME <<< "$PLAY_DEVICE_SELECTION"
+  if [ -z "$PLAY_DEVICE_ID" ]; then
+    echo "::error::No compatible Nexus 5/Nexus 5X phone profile was found for the Android 7.0 Google Play image."
+    grep -i -A 2 -B 1 'nexus 5' "$RUNNER_TEMP/avd-device-list.txt" | head -n 80 || true
+    exit 1
+  fi
+  echo "Using Google Play-compatible phone profile: $PLAY_PROFILE_NAME (ID: $PLAY_DEVICE_ID)"
+  AVD_DEVICE_ARGS=(--device "$PLAY_DEVICE_ID")
+elif [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # Prefer Google's first-generation Nexus 7 hardware profile from the SDK.
   # The selected profile supplies display geometry/density and hardware settings;
   # the selected Android system image's build identity is preserved.
@@ -274,7 +322,6 @@ EMULATOR_ARGS=(
   -avd "$ANDROID_AVD_NAME"
   -port 5554
   -accel "$ACCEL_MODE"
-  -writable-system
   -no-snapshot
   -no-boot-anim
   -gpu "$VM_GPU_MODE"
@@ -284,6 +331,11 @@ EMULATOR_ARGS=(
   -memory "$VM_RAM_MB"
   -cores "$VM_CPU_CORES"
 )
+if [ "$ANDROID_GOOGLE_PLAY_STORE" != "true" ]; then
+  EMULATOR_ARGS+=(-writable-system)
+else
+  echo "Using the signed Google Play system image without -writable-system."
+fi
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
   EMULATOR_ARGS+=("${SDCARD_ARGS[@]}")
 fi
@@ -626,6 +678,11 @@ echo "=========================================================="
 echo "ANDROID VM IS READY"
 echo "Open: $TUNNEL_URL"
 echo "Android: $ANDROID_RELEASE, API $ANDROID_API_LEVEL, $ANDROID_ARCH"
+if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
+  echo "Google Play Store: enabled (official Google Play system image)"
+else
+  echo "Google Play Store: disabled (Google APIs system image)"
+fi
 echo "KVM acceleration: $ACCEL_MODE"
 echo "Streaming: Selkies 2.0.0 H.264 over WebSocket (browser mouse/keyboard)"
 echo "Audio: $AUDIO_AVAILABLE (Opus through Selkies)"
