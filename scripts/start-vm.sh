@@ -97,7 +97,7 @@ AVD_DEVICE_ARGS=()
 if [ "$VM_DEVICE_MODE" = "tablet" ]; then
   # Prefer Google's first-generation Nexus 7 hardware profile from the SDK.
   # The selected profile supplies display geometry/density and hardware settings;
-  # the Android system image's build identity remains the KitKat emulator image.
+  # the selected Android system image's build identity is preserved.
   "$AVDMANAGER" list device > "$RUNNER_TEMP/avd-device-list.txt"
   TABLET_DEVICE_SELECTION="$(awk '
     /^[[:space:]]*id:/ {
