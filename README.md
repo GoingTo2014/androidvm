@@ -6,7 +6,7 @@ AndroidVM starts Android 4.4 (KitKat) Google APIs x86 on a temporary GitHub Acti
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android 4.4 VM** and click **Run workflow**.
-3. Choose the device form factor (Phone or Tablet), session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose the device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
 The workflow is manual-only. Phone mode is the default. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
@@ -17,7 +17,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 - The first deployment uses Selkies' single-port WebSocket transport with H.264/WebCodecs, which works through the existing TryCloudflare HTTP tunnel without additional media ports or a TURN server.
 - The stream targets up to 60 FPS; actual frame rate depends on CPU encoding capacity, runner load, browser decoding, and network conditions.
 - The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward.
-- Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings. The AVD enables its hardware-keyboard setting in both phone and tablet modes, so the computer keyboard can type directly into Android without requiring the on-screen keyboard.
+- Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings. The **Hardware keyboard** workflow option controls Android's `hw.keyboard` setting in either device mode. It defaults to **enabled** so the computer keyboard can type directly into Android; disable it if you prefer to simulate a device without a physical keyboard and rely on Android's on-screen keyboard.
 - The emulator runs in an isolated Xvfb display with the X11 extensions Selkies needs for capture and input.
 
 **Try WebRTC too:** the Selkies side menu has transport switching enabled. The session starts in H.264/WebSocket mode, but you can try WebRTC from the UI; Selkies' default public TURN relay is configured in its upstream settings. WebRTC may be slower if traffic has to pass through that relay, so switch back to WebSockets if it stutters or fails. The basic TryCloudflare URL itself only exposes the web/signaling port, not arbitrary media ports.
@@ -36,6 +36,7 @@ The workflow is manual-only. Phone mode is the default. Default resources are 20
 ## Choosing VM resources
 
 - **Device form factor:** Phone (default) or Tablet.
+- **Hardware keyboard:** Enabled (default) or disabled.
 - **RAM:** 1536, 2048, 3072, or 4096 MB.
 - **CPU cores:** 1, 2, or 4. One core is the default for KitKat compatibility.
 - **Internal data storage:** 1, 2, 4, or 8 GB.
