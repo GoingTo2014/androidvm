@@ -32,6 +32,7 @@ case "$BROWSER_TO_INSTALL" in
     MAX_API=23
     APK_NAME="chrome-81.0.4044.138-x86.apk"
     APK_URL="https://d.apkpure.com/b/APK/com.android.chrome?versionCode=404413801&from=details"
+    APK_REFERER="https://apkpure.com/google-chrome/com.android.chrome"
     APK_SHA256="1979345d2c581fac0e48588869207bc2ec4fa01c3d25562e85c0cea16faba4c6"
     ;;
   "Opera 58.8.2878.72999")
@@ -39,6 +40,7 @@ case "$BROWSER_TO_INSTALL" in
     MAX_API=20
     APK_NAME="opera-58.8.2878.72999-x86.apk"
     APK_URL="https://d.apkpure.com/b/APK/com.opera.browser?versionCode=1905822801&from=details"
+    APK_REFERER="https://apkpure.com/opera-browser/com.opera.browser"
     APK_SHA256="7ee73f623b5275a663dcca7b57f49a8335b58be9e4270b06affc7b1fcc927c51"
     ;;
   *)
@@ -58,7 +60,30 @@ fi
 
 APK_PATH="${RUNNER_TEMP:-/tmp}/$APK_NAME"
 echo "Downloading $BROWSER_TO_INSTALL for x86 from its configured archive..."
-curl -fL --retry 3 --retry-delay 2 "$APK_URL" -o "$APK_PATH"
+if [[ "$APK_URL" == https://d.apkpure.com/* ]]; then
+  # APKPure's direct-download endpoint may reject curl's default User-Agent.
+  # Use browser-like headers and a listing-page referrer, then retry with its
+  # Lite site referrer if the primary request is denied.
+  APK_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+  if ! curl -fL --retry 2 --retry-delay 2 \
+    --user-agent "$APK_USER_AGENT" \
+    --referer "$APK_REFERER" \
+    --header "Accept: application/vnd.android.package-archive,application/octet-stream,*/*" \
+    "$APK_URL" -o "$APK_PATH"; then
+    echo "::warning::APKPure rejected the first request; retrying with its Lite-site referrer."
+    rm -f "$APK_PATH"
+    if ! curl -fL --retry 1 --retry-delay 2 \
+      --user-agent "$APK_USER_AGENT" \
+      --referer "${APK_REFERER/https:\/\/apkpure.com/https:\/\/apkpure.net}" \
+      --header "Accept: application/vnd.android.package-archive,application/octet-stream,*/*" \
+      "$APK_URL" -o "$APK_PATH"; then
+      echo "::error::Could not download $BROWSER_TO_INSTALL: APKPure returned an HTTP error (often 403 when direct downloads are blocked)."
+      exit 1
+    fi
+  fi
+else
+  curl -fL --retry 3 --retry-delay 2 "$APK_URL" -o "$APK_PATH"
+fi
 echo "$APK_SHA256  $APK_PATH" | sha256sum --check
 
 if ! adb -s emulator-5554 install -r "$APK_PATH"; then
