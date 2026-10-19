@@ -367,12 +367,15 @@ SELKIES_ARGS=(
   --enable-https=false
   --enable-basic-auth=false
   --mode=websockets
+  --enable-dual-mode=true
   --encoder=h264enc
   --use-cpu=true
   --enable-resize=false
   --framerate=60,8-60
 )
-if [ "$AUDIO_AVAILABLE" != "1" ]; then
+if [ "$AUDIO_AVAILABLE" = "1" ]; then
+  SELKIES_ARGS+=(--audio-device-name=vm_audio.monitor)
+else
   echo "::warning::PulseAudio is unavailable; starting Selkies with audio disabled."
   SELKIES_ARGS+=(--audio-enabled=false)
 fi
