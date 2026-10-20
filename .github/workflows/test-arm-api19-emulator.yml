@@ -12,11 +12,6 @@ on:
           - "30"
           - "60"
           - "120"
-  push:
-    branches:
-      - "test/arm-api19-emulator"
-    paths:
-      - "scripts/arm-test-trigger.txt"
 
 permissions:
   contents: read
