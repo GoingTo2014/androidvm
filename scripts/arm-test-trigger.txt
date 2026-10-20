@@ -9,3 +9,5 @@ Retest trigger: install platforms;android-19 for legacy emulator.
 Retest trigger: remove unsupported -no-metrics flag from Emulator 28.
 
 Retest trigger: black remote screen fix (Xvfb capture extensions, SwiftShader, initial frame refresh).
+
+Retest trigger: restore proven Selkies/Xvfb streaming settings; keep Android ARM SwiftShader and display-refresh diagnostics.
