@@ -518,7 +518,7 @@ adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || 
 # Do not use the emulator-console recording command here: on Emulator 28 it can
 # drop the ADB transport after creating a tiny/invalid recording. The tested UI
 # workaround is performed from the emulator controls, not via "adb emu screenrecord".
-NDROID_REPORTED_ABI="$(adb -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')"
+ANDROID_REPORTED_ABI="$(adb -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')"
 echo "Android reported ABI: $ANDROID_REPORTED_ABI"
 if [ "$ANDROID_ARM" = "true" ]; then
   if ! printf '%s' "$ANDROID_REPORTED_ABI" | grep -qi '^armeabi-v7a$'; then
