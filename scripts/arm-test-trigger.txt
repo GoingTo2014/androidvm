@@ -3,3 +3,5 @@ One-time marker to start the isolated Android 4.4 ARM desktop test. The workflow
 Retest trigger: emulator SDK package fix and checksum-verified Selkies startup.
 
 Retest trigger: force absolute Android 4.4 ARM system image path for Emulator 28.
+
+Retest trigger: install platforms;android-19 for legacy emulator.
