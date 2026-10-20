@@ -1,0 +1,68 @@
+name: Start Exton KitKat / Android-x86 ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_source:
+        description: "Exton Build 9 includes period Google apps; it needs your authorized direct ISO URL as a repository secret."
+        required: true
+        type: choice
+        default: "Exton Build 9 (GAPPS)"
+        options:
+          - "Exton Build 9 (GAPPS)"
+          - "Official Android-x86 4.4-r3 (free baseline)"
+      session_minutes:
+        description: "How long to keep the VM running"
+        required: true
+        type: choice
+        default: "120"
+        options:
+          - "30"
+          - "60"
+          - "120"
+          - "180"
+          - "240"
+          - "300"
+      vm_ram_mb:
+        description: "Guest RAM (MB)"
+        required: true
+        type: choice
+        default: "2048"
+        options:
+          - "2048"
+          - "3072"
+          - "4096"
+      vm_cpu_cores:
+        description: "Number of guest CPU cores"
+        required: true
+        type: choice
+        default: "2"
+        options:
+          - "1"
+          - "2"
+          - "4"
+
+permissions:
+  contents: read
+
+jobs:
+  android-x86-iso:
+    name: Boot KitKat x86 ISO and stream desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate standalone ISO launcher
+        run: bash -n scripts/start-androidx86-iso.sh
+
+      - name: Boot selected ISO and publish temporary browser desktop
+        env:
+          IMAGE_SOURCE: ${{ inputs.image_source }}
+          EXTON_KITKAT_ISO_URL: ${{ secrets.EXTON_KITKAT_ISO_URL }}
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
+          VM_RAM_MB: ${{ inputs.vm_ram_mb }}
+          VM_CPU_CORES: ${{ inputs.vm_cpu_cores }}
+          VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
+        run: bash scripts/start-androidx86-iso.sh
