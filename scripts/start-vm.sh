@@ -128,7 +128,7 @@ RUNTIME_PACKAGES=(
 )
 if [ "$ANDROID_ARM" = "true" ]; then
   # Android Emulator 28 and the self-contained Selkies AppImage are used for ARM KitKat.
-  RUNTIME_PACKAGES+=(libfuse2 libncurses5 libtinfo5 libpulse0)
+  RUNTIME_PACKAGES+=(libfuse2 libncurses5 libtinfo5 libpulse0 x11-xserver-utils)
 fi
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${RUNTIME_PACKAGES[@]}"
 
