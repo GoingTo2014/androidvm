@@ -287,7 +287,7 @@ jobs:
           echo "::group::Launch ARM Android 4.4 (live emulator output)"
           "$LEGACY_EMULATOR" \
             -avd arm-kitkat-test -port 5554 -no-audio -no-boot-anim \
-            -no-snapshot -gpu off -accel off -verbose -show-kernel -no-metrics \
+            -no-snapshot -gpu off -accel off -verbose -show-kernel \
             -memory 1024 \
             > >(tee "$OUT/emulator.log") 2>&1 &
           EMULATOR_PID=$!
