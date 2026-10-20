@@ -43,6 +43,15 @@ The manual workflow has a **Google Play Store** toggle. When enabled, select **A
 
 Google's Play Store images are signed with release keys and do not support ADB root. Therefore, Google Play mode rejects **Root access = enabled** and any APKs in `systemapks/`; ordinary APK installation through `apks/` remains available. Google Play Store mode is restricted to phone mode in this workflow because the legacy API 24 Play image has compatible phone hardware profiles, not the existing Nexus 7 tablet profile. <Link url="https://developer.android.com/studio/run/managing-avds" title="Android Emulator documentation"/>.
 
+## Separate Android-x86 KitKat ISO workflow
+
+The **Start Exton KitKat / Android-x86 ISO** workflow is separate from **Start Android VM**. It starts an x86 Android live ISO in QEMU instead of using the Android SDK emulator, and gives it its own desktop stream and TryCloudflare tunnel.
+
+- **Exton Build 9 (GAPPS)** is the preferred option for the richer 2014-era setup: the [publisher's release page](https://www.exton.se/android-x86-kitkat-4-4-4-build-9-with-gapps-kernel-4-4-0-exton-android-x86-bluetooth-working-and-mesa-10-5-9/) lists Google Play Services, Play Store, Maps, YouTube, and other apps. The publisher page currently says to contact the author for a new download link and show a previous purchase receipt; it does not provide a public direct ISO URL. To use a link you're authorized to download, add a repository Actions secret named `EXTON_KITKAT_ISO_URL` containing the direct HTTPS URL. The workflow masks the URL in logs.
+- **Official Android-x86 4.4-r3 (free baseline)** is available from the [official release notes](https://www.android-x86.org/releases/releasenote-4-4-r3.html) and downloads the public ISO from SourceForge. This is a free x86 KitKat baseline, but it does **not** contain the bundled Google apps from Exton Build 9. Its SHA-1 is checked against the value published by the Android-x86 release notes.
+- The separate workflow uses QEMU's x86 system emulator and boots the selected ISO in live mode. It does not modify or share settings with **Start Android VM**. The guest is temporary; changes are not guaranteed to persist after the job ends.
+- The ISO is supplied to QEMU as a live CD image, so the Android boot menu and startup screen may appear in the stream. Use the default live option to try Android without installing it.
+
 ## Display and window controls
 
 - Selkies 2.0.0 captures the existing X11 desktop and provides the browser UI, H.264 video, audio, and mouse/keyboard input. The official Ubuntu 24.04 package is installed and its SHA-256 checksum is verified at startup.
@@ -120,6 +129,8 @@ The TryCloudflare URL is temporary, but anyone who can access it may control the
 ## Project layout
 
 - `.github/workflows/start-vm.yml` — manual session and resource options.
+- `.github/workflows/start-exton-kitkat.yml` — separate x86 KitKat ISO workflow.
+- `scripts/start-androidx86-iso.sh` — downloads, validates, boots, and streams the selected x86 ISO with QEMU.
 - `scripts/start-vm.sh` — emulator, lightweight window manager, Selkies installation and tunnel launcher.
 - `scripts/install-browser.sh` — downloads, verifies, and installs the selected legacy browser.
 - `scripts/android-version.sh` — maps workflow choices to Android API levels, system-image packages, and AVD names.
