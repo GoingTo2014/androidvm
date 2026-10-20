@@ -268,6 +268,57 @@ AVD_PHONE_CONFIG
   echo "Using the existing default phone display profile."
 fi
 
+ANDROID_EMULATOR_BIN="$ANDROID_HOME/emulator/emulator"
+ANDROID_EMULATOR_GPU_MODE="$VM_GPU_MODE"
+if [ "$ANDROID_ARM" = "true" ]; then
+  echo "Downloading the known-working legacy Android Emulator 28.0.22 for ARM KitKat..."
+  LEGACY_SDK_DIR="$RUNNER_TEMP/legacy-sdk"
+  LEGACY_EMULATOR="$LEGACY_SDK_DIR/emulator/emulator"
+  curl -fL --retry 3 --retry-delay 2 --progress-bar \
+    "https://dl.google.com/android/repository/emulator-linux-5194135.zip" \
+    -o "$RUNNER_TEMP/emulator-linux-5194135.zip"
+  rm -rf "$LEGACY_SDK_DIR"
+  mkdir -p "$LEGACY_SDK_DIR"
+  unzip -q "$RUNNER_TEMP/emulator-linux-5194135.zip" -d "$LEGACY_SDK_DIR"
+  if [ ! -x "$LEGACY_EMULATOR" ]; then
+    echo "::error::Legacy emulator 28.0.22 executable was not found."
+    find "$LEGACY_SDK_DIR" -maxdepth 3 -type f -name emulator -print || true
+    exit 1
+  fi
+  "$LEGACY_EMULATOR" -version | tee "$RUNNER_TEMP/legacy-emulator-version.txt"
+  if ! "$LEGACY_EMULATOR" -version 2>&1 | grep -q '28[.]0[.]22'; then
+    echo "::error::Downloaded emulator is not version 28.0.22."
+    exit 1
+  fi
+
+  # Emulator 28 expects an absolute image directory and legacy SwiftShader mode.
+  AVD_CONFIG="$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/config.ini"
+  if [ ! -f "$ANDROID_SYSTEM_IMAGE_DIR/system.img" ]; then
+    echo "::error::ARM system.img is missing: $ANDROID_SYSTEM_IMAGE_DIR/system.img"
+    exit 1
+  fi
+  if grep -q '^image.sysdir.1=' "$AVD_CONFIG"; then
+    sed -i "s|^image.sysdir.1=.*|image.sysdir.1=$ANDROID_SYSTEM_IMAGE_DIR/|" "$AVD_CONFIG"
+  else
+    printf 'image.sysdir.1=%s/\n' "$ANDROID_SYSTEM_IMAGE_DIR" >> "$AVD_CONFIG"
+  fi
+  if grep -q '^hw.gpu.enabled=' "$AVD_CONFIG"; then
+    sed -i 's/^hw.gpu.enabled=.*/hw.gpu.enabled=yes/' "$AVD_CONFIG"
+  else
+    echo 'hw.gpu.enabled=yes' >> "$AVD_CONFIG"
+  fi
+  if grep -q '^hw.gpu.mode=' "$AVD_CONFIG"; then
+    sed -i 's/^hw.gpu.mode=.*/hw.gpu.mode=swiftshader_indirect/' "$AVD_CONFIG"
+  else
+    echo 'hw.gpu.mode=swiftshader_indirect' >> "$AVD_CONFIG"
+  fi
+  ANDROID_EMULATOR_BIN="$LEGACY_EMULATOR"
+  ANDROID_EMULATOR_GPU_MODE=swiftshader_indirect
+  cp "$AVD_CONFIG" "$RUNNER_TEMP/arm-avd-config.txt"
+  echo "ARM mode uses Android API 19 default (AOSP) image, Emulator 28.0.22, and SwiftShader."
+  echo "Google Play Services is intentionally absent to prevent recurring legacy GMS crashes."
+fi
+
 SDCARD_ARGS=()
 if [ "$VM_SD_CARD_ENABLED" = "enabled" ]; then
   echo "Creating $VM_SD_CARD_SIZE virtual SD card..."
@@ -296,20 +347,27 @@ openbox --sm-disable > "$RUNNER_TEMP/openbox.log" 2>&1 &
 WM_PID=$!
 sleep 2
 
-echo "Checking for KVM hardware acceleration..."
-if [ -e /dev/kvm ]; then
-  sudo chmod a+rw /dev/kvm || true
-fi
-ACCEL_MODE=off
-if "$ANDROID_HOME/emulator/emulator" -accel-check > "$RUNNER_TEMP/accel-check.log" 2>&1; then
-  ACCEL_MODE=on
-fi
-if [ "$ACCEL_MODE" = "on" ]; then
-  echo "KVM is available. Android Emulator will use hardware acceleration."
-else
-  echo "::warning::KVM is not available on this runner; Android will use software emulation and may be very slow."
-  cat "$RUNNER_TEMP/accel-check.log" || true
+echo "Checking CPU acceleration mode..."
+if [ "$ANDROID_ARM" = "true" ]; then
+  # The tested legacy ARM guest requires QEMU software CPU emulation, even on a KVM host.
+  ACCEL_MODE=off
+  echo "ARM KitKat uses software CPU emulation. Performance will be slower than x86 Android."
   export ANDROID_I_WANT_MY_TCG=yes
+else
+  if [ -e /dev/kvm ]; then
+    sudo chmod a+rw /dev/kvm || true
+  fi
+  ACCEL_MODE=off
+  if "$ANDROID_EMULATOR_BIN" -accel-check > "$RUNNER_TEMP/accel-check.log" 2>&1; then
+    ACCEL_MODE=on
+  fi
+  if [ "$ACCEL_MODE" = "on" ]; then
+    echo "KVM is available. Android Emulator will use hardware acceleration."
+  else
+    echo "::warning::KVM is not available on this runner; Android will use software emulation and may be very slow."
+    cat "$RUNNER_TEMP/accel-check.log" || true
+    export ANDROID_I_WANT_MY_TCG=yes
+  fi
 fi
 
 AUDIO_AVAILABLE=0
@@ -340,15 +398,15 @@ if [ "$AUDIO_AVAILABLE" = "0" ]; then
   echo "::warning::PulseAudio capture is unavailable; VM audio will be disabled."
 fi
 
-echo "Starting $ANDROID_RELEASE emulator with graphics mode '$VM_GPU_MODE'..."
+echo "Starting $ANDROID_RELEASE emulator with graphics mode '$ANDROID_EMULATOR_GPU_MODE'..."
 EMULATOR_AUDIO_ENV=()
 EMULATOR_AUDIO_ARGS=()
 if [ "$AUDIO_AVAILABLE" = "1" ]; then
   EMULATOR_AUDIO_ENV=(PULSE_SINK=vm_audio QEMU_AUDIO_DRV=pa)
-  echo "Android Emulator audio backend: PulseAudio (vm_audio)"
+  echo "Android Emulator audio backend: PulseAudio (vm_audio); Selkies will capture vm_audio.monitor."
 else
   EMULATOR_AUDIO_ARGS=(-no-audio)
-  echo "::warning::Android Emulator will start with audio disabled because PulseAudio capture is unavailable."
+  echo "::warning::PulseAudio is unavailable; Android emulator audio and browser audio are disabled."
 fi
 
 EMULATOR_ARGS=(
@@ -357,13 +415,16 @@ EMULATOR_ARGS=(
   -accel "$ACCEL_MODE"
   -no-snapshot
   -no-boot-anim
-  -gpu "$VM_GPU_MODE"
+  -gpu "$ANDROID_EMULATOR_GPU_MODE"
   -show-kernel
-  -logcat '*:E'
-  -no-metrics
   -memory "$VM_RAM_MB"
-  -cores "$VM_CPU_CORES"
 )
+if [ "$ANDROID_ARM" = "true" ]; then
+  # Emulator 28.0.22 rejects -no-metrics and the newer -cores argument.
+  EMULATOR_ARGS+=(-verbose)
+else
+  EMULATOR_ARGS+=(-logcat '*:E' -no-metrics -cores "$VM_CPU_CORES")
+fi
 if [ "$ANDROID_GOOGLE_PLAY_STORE" != "true" ]; then
   EMULATOR_ARGS+=(-writable-system)
 else
@@ -375,11 +436,11 @@ fi
 
 if [ "$ACCEL_MODE" = "off" ]; then
   nohup env "${EMULATOR_AUDIO_ENV[@]}" ANDROID_I_WANT_MY_TCG=yes \
-    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" "${EMULATOR_AUDIO_ARGS[@]}" \
+    "$ANDROID_EMULATOR_BIN" "${EMULATOR_ARGS[@]}" "${EMULATOR_AUDIO_ARGS[@]}" \
     > "$RUNNER_TEMP/emulator.log" 2>&1 &
 else
   nohup env "${EMULATOR_AUDIO_ENV[@]}" \
-    "$ANDROID_HOME/emulator/emulator" "${EMULATOR_ARGS[@]}" "${EMULATOR_AUDIO_ARGS[@]}" \
+    "$ANDROID_EMULATOR_BIN" "${EMULATOR_ARGS[@]}" "${EMULATOR_AUDIO_ARGS[@]}" \
     > "$RUNNER_TEMP/emulator.log" 2>&1 &
 fi
 EMULATOR_PID=$!
