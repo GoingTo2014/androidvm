@@ -540,7 +540,18 @@ if [ "$ANDROID_ARM" = "true" ]; then
 fi
 ANDROID_REPORTED_ABI="$(adb -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')"
 echo "Android reported ABI: $ANDROID_REPORTED_ABI"
-if [ "$ANDROID_ARM" = "true" ] && ! printf '%s' "$ANDROID_REPORTED_ABI" | grep -qi '^armeabi-v7a
+if [ "$ANDROID_ARM" = "true" ]; then
+  if ! printf '%s' "$ANDROID_REPORTED_ABI" | grep -qi '^armeabi-v7a$'; then
+    echo "::error::ARM mode was selected, but Android reports ABI '$ANDROID_REPORTED_ABI'."
+    exit 1
+  fi
+else
+  if ! printf '%s' "$ANDROID_REPORTED_ABI" | grep -qi '^x86'; then
+    echo "::error::x86 mode was selected, but Android reports ABI '$ANDROID_REPORTED_ABI'."
+    exit 1
+  fi
+fi
+adb -s emulator-5554 shell input keyevent 82 || true
 echo "Raising Android's startup volume so ringtone tests are audible..."
 # On the home screen these key events raise the ring volume on legacy Android
 # releases instead of leaving a newly created emulator effectively silent.
