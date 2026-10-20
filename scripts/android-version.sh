@@ -3,6 +3,11 @@
 # API 13 / Android 3.2 is intentionally omitted: the official Google APIs SDK
 # repository does not list an installable x86 image for that release.
 ANDROID_VERSION="${ANDROID_VERSION:-4.4 (API 19)}"
+ANDROID_ARM="${ANDROID_ARM:-false}"
+case "$ANDROID_ARM" in
+  true|false) ;;
+  *) echo "::error::ANDROID_ARM must be true or false, got: $ANDROID_ARM"; exit 2 ;;
+esac
 
 case "$ANDROID_VERSION" in
   "2.3.3 (API 10)")
@@ -74,16 +79,30 @@ case "$ANDROID_GOOGLE_PLAY_STORE" in
     ;;
 esac
 
-if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
-  if [ "$ANDROID_API_LEVEL" -ne 24 ]; then
-    echo "::error::The official Google Play Store x86 image is only configured for Android 7.0 (API 24) in this project."
-    echo "::error::Select Android 7.0 (API 24), or turn off Google Play Store to use the Google APIs image."
+if [ "$ANDROID_ARM" = "true" ]; then
+  if [ "$ANDROID_API_LEVEL" -ne 19 ]; then
+    echo "::error::ARM Android is available only with Android 4.4 (API 19). Select Android 4.4 or turn off ARM Android."
     exit 2
   fi
-  ANDROID_SYSTEM_IMAGE_VARIANT=google_apis_playstore
-  ANDROID_AVD_NAME="${ANDROID_AVD_NAME}PlayStore"
+  if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
+    echo "::error::ARM Android 4.4 uses the plain Android system image without Google Play Services. Turn off Google Play Store."
+    exit 2
+  fi
+  ANDROID_ARCH=armeabi-v7a
+  ANDROID_SYSTEM_IMAGE_VARIANT=default
+  ANDROID_AVD_NAME=KitKatARM
 else
-  ANDROID_SYSTEM_IMAGE_VARIANT=google_apis
+  if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
+    if [ "$ANDROID_API_LEVEL" -ne 24 ]; then
+      echo "::error::The official Google Play Store x86 image is only configured for Android 7.0 (API 24) in this project."
+      echo "::error::Select Android 7.0 (API 24), or turn off Google Play Store to use the Google APIs image."
+      exit 2
+    fi
+    ANDROID_SYSTEM_IMAGE_VARIANT=google_apis_playstore
+    ANDROID_AVD_NAME="${ANDROID_AVD_NAME}PlayStore"
+  else
+    ANDROID_SYSTEM_IMAGE_VARIANT=google_apis
+  fi
 fi
 
 ANDROID_SYSTEM_IMAGE_PACKAGE="system-images;android-${ANDROID_API_LEVEL};${ANDROID_SYSTEM_IMAGE_VARIANT};${ANDROID_ARCH}"
