@@ -9,8 +9,12 @@ mkdir -p "$ANDROID_HOME/cmdline-tools" "$RUNNER_TEMP/android-tools-unpack"
 
 echo "Installing libraries required by the Android Emulator..."
 sudo apt-get update
+ALSA_PACKAGE=libasound2t64
+if grep -qE '^VERSION_ID="22[.]04"' /etc/os-release; then
+  ALSA_PACKAGE=libasound2
+fi
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  libpulse0 libasound2t64 libx11-6 libx11-xcb1 libxcb1 \
+  libpulse0 "$ALSA_PACKAGE" libx11-6 libx11-xcb1 libxcb1 \
   libxkbcommon-x11-0 libxcb-cursor0 libgl1 libnss3
 
 SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
