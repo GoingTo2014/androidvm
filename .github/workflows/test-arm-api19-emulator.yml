@@ -116,7 +116,7 @@ jobs:
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses 2>&1 | tee "$OUT/sdk-licenses.log" || true
           # Keep the SDK's emulator package installed so avdmanager recognizes the SDK.
           # The legacy emulator runtime is unpacked separately below; it must not replace this package directory.
-          if ! "$SDKMANAGER" --verbose --sdk_root="$ANDROID_HOME" --install platform-tools emulator "$IMAGE_PACKAGE" 2>&1 | tee "$OUT/sdk-install.log"; then
+          if ! "$SDKMANAGER" --verbose --sdk_root="$ANDROID_HOME" --install platform-tools emulator "platforms;android-19" "$IMAGE_PACKAGE" 2>&1 | tee "$OUT/sdk-install.log"; then
             echo "::error::SDK Manager failed to install platform-tools, emulator, or $IMAGE_PACKAGE."
             echo "SDK install log is shown above and saved as an artifact."
             "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --list 2>&1 | tee "$OUT/sdk-package-list.log" || true
@@ -126,6 +126,13 @@ jobs:
             echo "::error::SDK Manager returned success, but the ARM system.img is missing."
             exit 1
           fi
+          if [ ! -d "$ANDROID_HOME/platforms/android-19" ]; then
+            echo "::error::Android 19 SDK platform directory was not installed."
+            find "$ANDROID_HOME/platforms" -maxdepth 2 -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Installed SDK folders:"
+          find "$ANDROID_HOME" -maxdepth 2 -type d \( -name platforms -o -name emulator -o -name platform-tools -o -name system-images \) -print
           test -f "$ANDROID_HOME/emulator/package.xml" || {
             echo "::error::The SDK emulator package metadata is missing after installation."
             exit 1
