@@ -6,7 +6,7 @@ AndroidVM starts a selectable Android emulator system image on a temporary GitHu
 
 1. Open the repository's **Actions** tab.
 2. Select **Start Android VM** and click **Run workflow**.
-3. Choose the Android version, whether to enable the Google Play Store (optional; Android 7.0 only), graphics rendering mode, browser to install (optional), device form factor (Phone or Tablet), hardware keyboard, session duration, ADB root mode, RAM, CPU cores, internal data storage, and optional SD card and capacity.
+3. Choose Android version and, if desired, enable **ARM Android** (Android 4.4 only) or Google Play Store (Android 7.0 only). Then choose graphics rendering mode, optional browser, device form factor, keyboard, session duration, root access, memory, CPU cores, internal storage, and optional SD card.
 4. Open the **Start Android VM** job logs and use the temporary TryCloudflare URL printed when the VM is ready.
 
 The workflow is manual-only. Android 4.4 KitKat and Phone mode are the defaults. Default resources are 2048 MB RAM, one CPU core, 2 GB internal storage, and no SD card.
@@ -27,7 +27,15 @@ The first batch offers these official Google APIs x86 system images:
 
 Android 3.2 Honeycomb (API 13) is not included yet because the official Google APIs SDK repository does not list an installable x86 system image for that API. We can investigate a legacy/community image separately rather than offering a workflow choice that cannot install.
 
-Each Android version and system-image variant (Google APIs or Google Play Store) has a separate cache key. The Android SDK tools are cached separately to avoid duplicating them for every release.
+Each Android version and system-image variant has a separate cache key. ARM Android uses a separate cache key from the x86 images. The Android SDK tools are cached separately to avoid duplicating them for every release.
+
+### ARM Android checkbox (Android 4.4 only)
+
+Enable **ARM Android** directly below the Android version selector and select **4.4 (API 19)**. This installs the official `system-images;android-19;default;armeabi-v7a` image, rather than the regular x86 Google APIs image. ARM mode uses the verified legacy Android Emulator 28.0.22, SwiftShader graphics, and CPU emulation; it will be significantly slower than x86 mode on a hosted runner.
+
+The ARM image is the plain AOSP image and deliberately excludes Google Play Services. Google ended future Google Play services updates for KitKat in August 2023, so the Google APIs ARM image can produce recurring compatibility errors. Apps requiring Google Play Services will not work in ARM mode unless they provide their own compatible implementation. See [Google's KitKat Play services announcement](https://android-developers.googleblog.com/2023/07/google-play-services-discontinuing-updates-for-kitkat.html).
+
+The ARM option is rejected for every Android version except 4.4 and cannot be combined with the Google Play Store option. The built-in browser choices are x86 APKs, so choose **None** in ARM mode and add a compatible ARM APK under `apks/` instead. The ARM run uses Ubuntu 22.04 and a version-compatible Selkies package. Audio is routed through PulseAudio and Selkies when host audio capture initializes successfully.
 
 ### Google Play Store option
 
@@ -40,7 +48,7 @@ Google's Play Store images are signed with release keys and do not support ADB r
 - Selkies 2.0.0 captures the existing X11 desktop and provides the browser UI, H.264 video, audio, and mouse/keyboard input. The official Ubuntu 24.04 package is installed and its SHA-256 checksum is verified at startup.
 - The first deployment uses Selkies' single-port WebSocket transport with H.264/WebCodecs, which works through the existing TryCloudflare HTTP tunnel without additional media ports or a TURN server.
 - The stream targets up to 60 FPS; actual frame rate depends on CPU encoding capacity, runner load, browser decoding, and network conditions.
-- The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward.
+- The runner uses Openbox as a lightweight window manager. This restores the Android Emulator window's titlebar and its minimize, maximize, and close buttons. The launcher attempts to center the emulator window initially; you can drag it by its titlebar afterward. ARM Android uses the legacy emulator and forces its compatible SwiftShader renderer regardless of the regular graphics-mode setting.
 - Selkies provides browser mouse/keyboard input, clipboard and touch/trackpad controls, plus stream settings. The **Hardware keyboard** workflow option controls Android's `hw.keyboard` setting in either device mode. It defaults to **enabled** so the computer keyboard can type directly into Android; disable it if you prefer to simulate a device without a physical keyboard and rely on Android's on-screen keyboard.
 - The emulator runs in an isolated Xvfb display with the X11 extensions Selkies needs for capture and input.
 
