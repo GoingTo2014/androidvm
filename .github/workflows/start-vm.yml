@@ -18,6 +18,11 @@ on:
           - "5.1 (API 22)"
           - "6.0 (API 23)"
           - "7.0 (API 24)"
+      arm_android:
+        description: "Use 32-bit ARM Android (only Android 4.4; Google apps are not included)"
+        required: true
+        type: boolean
+        default: false
       google_play_store:
         description: "Use the official Google Play Store image (Android 7.0/API 24 only; root and system APK injection unavailable)"
         required: true
@@ -173,12 +178,13 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.android-sdk/system-images
-          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-${{ inputs.google_play_store }}-v1
+          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-${{ inputs.google_play_store }}-arm-${{ inputs.arm_android }}-v1
 
       - name: Prepare Android SDK and selected system image
         env:
           ANDROID_VERSION: ${{ inputs.android_version }}
           ANDROID_GOOGLE_PLAY_STORE: ${{ inputs.google_play_store }}
+          ANDROID_ARM: ${{ inputs.arm_android }}
         run: bash scripts/prepare-android-sdk.sh
 
       - name: Save Android SDK tools cache before VM session
@@ -197,12 +203,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.android-sdk/system-images
-          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-${{ inputs.google_play_store }}-v1
+          key: ${{ runner.os }}-android-system-image-${{ inputs.android_version }}-${{ inputs.google_play_store }}-arm-${{ inputs.arm_android }}-v1
 
       - name: Start selected Android desktop and tunnel
         env:
           ANDROID_VERSION: ${{ inputs.android_version }}
           ANDROID_GOOGLE_PLAY_STORE: ${{ inputs.google_play_store }}
+          ANDROID_ARM: ${{ inputs.arm_android }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
