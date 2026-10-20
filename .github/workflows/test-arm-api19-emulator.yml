@@ -12,6 +12,11 @@ on:
           - "30"
           - "60"
           - "120"
+  push:
+    branches:
+      - "test/arm-api19-emulator"
+    paths:
+      - "scripts/arm-test-trigger.txt"
 
 permissions:
   contents: read
@@ -98,7 +103,7 @@ jobs:
             curl unzip ca-certificates libncurses5 libtinfo5 libnss3 \
             libx11-6 libx11-xcb1 libxcb1 libxcb-cursor0 libxkbcommon-x11-0 \
             libgl1 libpulse0 libasound2 libfuse2 xvfb openbox xdotool wmctrl \
-            x11-utils 2>&1 | tee "$OUT/apt-install.log"
+            x11-utils x11-apps x11-xserver-utils 2>&1 | tee "$OUT/apt-install.log"
           echo "::endgroup::"
 
           echo "::group::Download Android command-line tools"
@@ -167,8 +172,8 @@ jobs:
           cat >> "$AVD_CONFIG" <<'AVD_CONFIG_VALUES'
           hw.ramSize=1024
           hw.keyboard=yes
-          hw.gpu.enabled=no
-          hw.gpu.mode=off
+          hw.gpu.enabled=yes
+          hw.gpu.mode=swiftshader_indirect
           showDeviceFrame=no
           disk.dataPartition.size=2G
           AVD_CONFIG_VALUES
@@ -192,7 +197,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Start virtual display"
-          Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac +extension GLX +extension RANDR +extension RENDER -nolisten tcp > "$OUT/xvfb.log" 2>&1 &
+          Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac +extension COMPOSITE +extension DAMAGE +extension GLX +extension RANDR +extension RENDER +extension MIT-SHM +extension XFIXES +extension XTEST +iglx +render -nolisten tcp -noreset -shmem > "$OUT/xvfb.log" 2>&1 &
           XVFB_PID=$!
           export DISPLAY=:99
           sleep 2
@@ -204,7 +209,10 @@ jobs:
           openbox --sm-disable > "$OUT/openbox.log" 2>&1 &
           OPENBOX_PID=$!
           sleep 2
-          echo "Virtual X11 display is running."
+          xset s off -dpms || true
+          xdpyinfo -display "$DISPLAY" -queryExtensions > "$OUT/x11-extensions.txt" 2>&1 || true
+          xrandr --display "$DISPLAY" --current > "$OUT/x11-resolution.txt" 2>&1 || true
+          echo "Virtual X11 display is running; screen blanking is disabled and capture extensions are recorded."
           echo "::endgroup::"
 
           echo "::group::Download and start password-protected Selkies"
@@ -224,7 +232,7 @@ jobs:
             --mode=websockets \
             --encoder=h264enc \
             --use-cpu=true \
-            --enable-resize=false \
+            --enable-resize=true \
             --framerate=30,8-30 \
             --audio-enabled=false \
             > >(tee "$OUT/selkies.log") 2>&1 &
@@ -287,7 +295,7 @@ jobs:
           echo "::group::Launch ARM Android 4.4 (live emulator output)"
           "$LEGACY_EMULATOR" \
             -avd arm-kitkat-test -port 5554 -no-audio -no-boot-anim \
-            -no-snapshot -gpu off -accel off -verbose -show-kernel \
+            -no-snapshot -gpu swiftshader_indirect -accel off -verbose -show-kernel \
             -memory 1024 \
             > >(tee "$OUT/emulator.log") 2>&1 &
           EMULATOR_PID=$!
@@ -319,6 +327,16 @@ jobs:
           fi
 
           adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
+          adb -s emulator-5554 shell settings put global stay_on_while_plugged_in 3 || true
+          adb -s emulator-5554 shell svc power stayon true || true
+          echo "Requesting an initial Android UI redraw so the first remote frame is not stale."
+          adb -s emulator-5554 shell input keyevent 224 || true
+          adb -s emulator-5554 shell input keyevent 3 || true
+          sleep 3
+          xrefresh -display "$DISPLAY" -root || true
+          adb -s emulator-5554 shell screencap -p /sdcard/androidvm-guest-screen.png || true
+          adb -s emulator-5554 pull /sdcard/androidvm-guest-screen.png "$OUT/android-guest-screen.png" || true
+          adb -s emulator-5554 shell rm -f /sdcard/androidvm-guest-screen.png || true
           adb -s emulator-5554 shell getprop ro.build.version.release | tee "$OUT/android-release.txt"
           adb -s emulator-5554 shell getprop ro.build.version.sdk | tee "$OUT/android-api.txt"
           adb -s emulator-5554 shell getprop ro.product.cpu.abi | tee "$OUT/android-abi.txt"
