@@ -80,6 +80,9 @@ jobs:
               timeout 8s adb -s emulator-5554 shell getprop > "$OUT/android-properties.txt" 2>&1 || true
               timeout 8s adb -s emulator-5554 logcat -d -t 500 > "$OUT/android-logcat.txt" 2>&1 || true
             fi
+            if [ -f "$ANDROID_AVD_HOME/arm-kitkat-test.avd/config.ini" ]; then
+              cp "$ANDROID_AVD_HOME/arm-kitkat-test.avd/config.ini" "$OUT/avd-config-on-exit.txt" || true
+            fi
             if [ -n "$EMULATOR_PID" ]; then kill "$EMULATOR_PID" 2>/dev/null || true; fi
             if [ -n "$TUNNEL_PID" ]; then kill "$TUNNEL_PID" 2>/dev/null || true; fi
             if [ -n "$SELKIES_PID" ]; then kill "$SELKIES_PID" 2>/dev/null || true; fi
@@ -162,6 +165,22 @@ jobs:
           showDeviceFrame=no
           disk.dataPartition.size=2G
           AVD_CONFIG_VALUES
+
+          # Emulator 28 predates current AVD metadata behavior. Resolve the system image absolutely.
+          IMAGE_DIR="$ANDROID_HOME/system-images/android-19/google_apis/armeabi-v7a"
+          if [ ! -f "$IMAGE_DIR/system.img" ]; then
+            echo "::error::Expected ARM system image file is missing: $IMAGE_DIR/system.img"
+            find "$ANDROID_HOME/system-images/android-19" -maxdepth 4 -type f -printf '%p\n' | head -n 100 || true
+            exit 1
+          fi
+          if grep -q '^image.sysdir.1=' "$AVD_CONFIG"; then
+            sed -i "s|^image.sysdir.1=.*|image.sysdir.1=$IMAGE_DIR/|" "$AVD_CONFIG"
+          else
+            printf 'image.sysdir.1=%s/\n' "$IMAGE_DIR" >> "$AVD_CONFIG"
+          fi
+          echo "Legacy emulator image path set to: $IMAGE_DIR/"
+          cp "$AVD_CONFIG" "$OUT/avd-config.txt"
+          grep -E '^(image.sysdir.1|abi.type|tag.id|hw.ramSize|hw.gpu)' "$AVD_CONFIG" || true
           echo "AVD created."
           echo "::endgroup::"
 
