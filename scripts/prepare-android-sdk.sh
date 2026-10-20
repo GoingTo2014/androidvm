@@ -32,6 +32,13 @@ SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 echo "Accepting Android SDK licenses..."
 yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 
+# The legacy Emulator 28 runtime needs the SDK's platforms directory to exist
+# under ANDROID_SDK_ROOT. Install API 19 platform files for ARM KitKat mode.
+if [ "$ANDROID_ARM" = "true" ] && [ ! -d "$ANDROID_HOME/platforms/android-19" ]; then
+  echo "Installing Android 4.4 SDK platform required by legacy ARM emulator..."
+  "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install "platforms;android-19"
+fi
+
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] || [ ! -x "$ANDROID_HOME/emulator/emulator" ]; then
   echo "Installing common Android SDK packages (emulator and platform-tools)..."
   "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
