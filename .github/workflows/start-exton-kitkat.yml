@@ -42,12 +42,6 @@ on:
           - "2"
           - "4"
 
-  push:
-    branches:
-      - main
-    paths:
-      - "scripts/androidx86-iso-test-trigger.txt"
-
 permissions:
   contents: read
 
@@ -65,7 +59,7 @@ jobs:
 
       - name: Boot selected ISO and publish temporary browser desktop
         env:
-          IMAGE_SOURCE: ${{ inputs.image_source || (github.event_name == 'push' && 'Official Android-x86 4.4-r3 (free baseline)') || 'Exton Build 9 (GAPPS)' }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
           EXTON_KITKAT_ISO_URL: ${{ secrets.EXTON_KITKAT_ISO_URL }}
           SESSION_MINUTES: ${{ inputs.session_minutes }}
           VM_RAM_MB: ${{ inputs.vm_ram_mb }}
