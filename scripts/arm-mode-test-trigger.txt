@@ -1,1 +1,0 @@
-Temporary one-time trigger to validate and boot the corrected ARM Android 4.4 main-launcher path.
