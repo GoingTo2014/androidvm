@@ -1,0 +1,177 @@
+name: Test Android 4.4 ARM image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "test/arm-api19-emulator"
+    paths:
+      - ".github/workflows/test-arm-api19-emulator.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  arm-boot-test:
+    name: Boot Android 4.4 ARM with legacy emulator
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out test branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install legacy Android 4.4 ARM image and test boot
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          export ANDROID_HOME="$HOME/.android-sdk"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+
+          OUT="$GITHUB_WORKSPACE/arm-test-logs"
+          mkdir -p "$OUT" "$ANDROID_HOME/cmdline-tools" "$ANDROID_AVD_HOME"
+          IMAGE_PACKAGE="system-images;android-19;google_apis;armeabi-v7a"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          EMULATOR_PID=""
+
+          collect_logs() {
+            mkdir -p "$OUT"
+            if [ -x "$ANDROID_HOME/platform-tools/adb" ]; then
+              adb devices -l > "$OUT/adb-devices.txt" 2>&1 || true
+              adb -s emulator-5554 shell getprop > "$OUT/android-properties.txt" 2>&1 || true
+              adb -s emulator-5554 logcat -d -t 500 > "$OUT/android-logcat.txt" 2>&1 || true
+            fi
+            if [ -n "$EMULATOR_PID" ]; then
+              kill "$EMULATOR_PID" 2>/dev/null || true
+              wait "$EMULATOR_PID" 2>/dev/null || true
+            fi
+            if [ -f "$RUNNER_TEMP/android-emulator.log" ]; then
+              cp "$RUNNER_TEMP/android-emulator.log" "$OUT/emulator.log" || true
+            fi
+          }
+          trap collect_logs EXIT
+
+          echo "Runner OS:"
+          cat /etc/os-release | head -n 8
+          echo "KVM device: $(test -e /dev/kvm && echo present || echo absent)"
+          echo "Installing legacy emulator runtime libraries..."
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            curl unzip ca-certificates libncurses5 libtinfo5 libnss3 \
+            libx11-6 libx11-xcb1 libxcb1 libxcb-cursor0 \
+            libxkbcommon-x11-0 libgl1 libpulse0 libasound2
+
+          echo "Downloading Android command-line tools..."
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
+            -o "$RUNNER_TEMP/android-commandline-tools.zip"
+          mkdir -p "$RUNNER_TEMP/android-tools-unpack"
+          unzip -q "$RUNNER_TEMP/android-commandline-tools.zip" -d "$RUNNER_TEMP/android-tools-unpack"
+          rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+          mv "$RUNNER_TEMP/android-tools-unpack/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+
+          echo "Accepting SDK licenses..."
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses > "$OUT/sdk-licenses.log" 2>&1 || true
+
+          echo "Installing the official API 19 Google APIs ARM system image..."
+          if ! "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install platform-tools "$IMAGE_PACKAGE" > "$OUT/sdk-install.log" 2>&1; then
+            cat "$OUT/sdk-install.log"
+            "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --list > "$OUT/sdk-package-list.txt" 2>&1 || true
+            grep -i -C 2 'android-19.*armeabi-v7a\|armeabi-v7a.*android-19' "$OUT/sdk-package-list.txt" || true
+            echo "::error::Android SDK could not install $IMAGE_PACKAGE."
+            exit 1
+          fi
+          cat "$OUT/sdk-install.log"
+          test -f "$ANDROID_HOME/system-images/android-19/google_apis/armeabi-v7a/system.img"
+
+          echo "Downloading Google's legacy emulator build 5194135 (version 28.0.22)..."
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://dl.google.com/android/repository/emulator-linux-5194135.zip" \
+            -o "$RUNNER_TEMP/emulator-linux-5194135.zip"
+          rm -rf "$ANDROID_HOME/emulator"
+          unzip -q "$RUNNER_TEMP/emulator-linux-5194135.zip" -d "$ANDROID_HOME"
+
+          "$ANDROID_HOME/emulator/emulator" -version | tee "$OUT/emulator-version.txt"
+          if ! "$ANDROID_HOME/emulator/emulator" -version 2>&1 | grep -q '28\.0\.22'; then
+            echo "::error::The downloaded emulator archive did not report version 28.0.22."
+            exit 1
+          fi
+
+          echo "Creating ARM AVD..."
+          printf 'no\n' | "$AVDMANAGER" --verbose create avd \
+            --name arm-kitkat-test \
+            --package "$IMAGE_PACKAGE" \
+            --force 2>&1 | tee "$OUT/avd-create.log"
+
+          AVD_CONFIG="$ANDROID_AVD_HOME/arm-kitkat-test.avd/config.ini"
+          cat >> "$AVD_CONFIG" <<'AVD_CONFIG_VALUES'
+          hw.ramSize=1024
+          hw.keyboard=yes
+          hw.gpu.enabled=no
+          hw.gpu.mode=off
+          showDeviceFrame=no
+          disk.dataPartition.size=2G
+          AVD_CONFIG_VALUES
+
+          echo "Starting headless ARM Android 4.4; no APKs will be installed."
+          set +e
+          "$ANDROID_HOME/emulator/emulator" \
+            -avd arm-kitkat-test \
+            -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu off -accel off -verbose -show-kernel \
+            > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          set -e
+
+          BOOTED=0
+          for i in $(seq 1 180); do
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "::error::The emulator process exited before Android finished booting."
+              tail -n 200 "$RUNNER_TEMP/android-emulator.log" || true
+              exit 1
+            fi
+            if adb devices 2>/dev/null | grep -q 'emulator-5554[[:space:]]*device'; then
+              if adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -q '^1$'; then
+                BOOTED=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+
+          if [ "$BOOTED" -ne 1 ]; then
+            echo "::error::Android 4.4 ARM did not finish booting within 15 minutes."
+            adb devices -l || true
+            adb -s emulator-5554 shell getprop 2>&1 | tail -n 180 || true
+            adb -s emulator-5554 logcat -d -t 300 2>&1 | tail -n 220 || true
+            tail -n 240 "$RUNNER_TEMP/android-emulator.log" || true
+            exit 1
+          fi
+
+          adb -s emulator-5554 shell getprop ro.build.version.release | tee "$OUT/android-release.txt"
+          adb -s emulator-5554 shell getprop ro.build.version.sdk | tee "$OUT/android-api.txt"
+          adb -s emulator-5554 shell getprop ro.product.cpu.abi | tee "$OUT/android-abi.txt"
+          adb -s emulator-5554 shell getprop ro.build.fingerprint | tee "$OUT/android-fingerprint.txt"
+          if ! adb -s emulator-5554 shell getprop ro.product.cpu.abi | grep -qi '^armeabi'; then
+            echo "::error::Android booted, but the reported primary ABI is not ARM."
+            exit 1
+          fi
+          echo "SUCCESS: Android 4.4 ARM reached sys.boot_completed=1."
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-4.4-arm-boot-test-logs
+          path: arm-test-logs/
+          if-no-files-found: warn
+          retention-days: 7
