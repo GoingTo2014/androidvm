@@ -1,1 +1,0 @@
-Temporary one-time validation trigger for the standalone Android-x86 ISO workflow. Uses the public official Android-x86 4.4-r3 ISO, not the Exton image.
