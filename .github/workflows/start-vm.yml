@@ -136,18 +136,13 @@ on:
           - "2G"
           - "4G"
           - "8G"
-  push:
-    branches:
-      - main
-    paths:
-      - "scripts/arm-mode-test-trigger.txt"
 permissions:
   contents: read
 
 jobs:
   android-vm:
     name: Start Android VM
-    runs-on: ${{ (inputs.arm_android || github.event_name == 'push') && 'ubuntu-22.04' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arm_android && 'ubuntu-22.04' || 'ubuntu-24.04' }}
     timeout-minutes: 360
     steps:
       - name: Check out repository
@@ -188,7 +183,7 @@ jobs:
         env:
           ANDROID_VERSION: ${{ inputs.android_version }}
           ANDROID_GOOGLE_PLAY_STORE: ${{ inputs.google_play_store }}
-          ANDROID_ARM: ${{ inputs.arm_android || github.event_name == 'push' }}
+          ANDROID_ARM: ${{ inputs.arm_android }}
         run: bash scripts/prepare-android-sdk.sh
 
       - name: Save Android SDK tools cache before VM session
@@ -213,8 +208,8 @@ jobs:
         env:
           ANDROID_VERSION: ${{ inputs.android_version }}
           ANDROID_GOOGLE_PLAY_STORE: ${{ inputs.google_play_store }}
-          ANDROID_ARM: ${{ inputs.arm_android || github.event_name == 'push' }}
-          SESSION_MINUTES: ${{ inputs.session_minutes || '30' }}
+          ANDROID_ARM: ${{ inputs.arm_android }}
+          SESSION_MINUTES: ${{ inputs.session_minutes }}
           ROOT_ACCESS: ${{ inputs.root_access }}
           VM_DEVICE_MODE: ${{ inputs.device_mode }}
           VM_HARDWARE_KEYBOARD: ${{ inputs.hardware_keyboard }}
