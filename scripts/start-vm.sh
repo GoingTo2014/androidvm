@@ -16,6 +16,11 @@ VM_HARDWARE_KEYBOARD="${VM_HARDWARE_KEYBOARD:-enabled}"
 VM_GPU_MODE="${VM_GPU_MODE:-swiftshader}"
 BROWSER_TO_INSTALL="${BROWSER_TO_INSTALL:-None}"
 ANDROID_GOOGLE_PLAY_STORE="${ANDROID_GOOGLE_PLAY_STORE:-false}"
+ANDROID_ARM="${ANDROID_ARM:-false}"
+case "$ANDROID_ARM" in
+  true|false) ;;
+  *) echo "::error::Invalid ANDROID_ARM: $ANDROID_ARM (expected true or false)"; exit 2 ;;
+esac
 
 case "$VM_RAM_MB" in
   1536|2048|3072|4096) ;;
@@ -64,6 +69,11 @@ export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 mkdir -p "$ANDROID_HOME" "$ANDROID_AVD_HOME"
 source "${GITHUB_WORKSPACE:-$PWD}/scripts/android-version.sh"
+if [ "$ANDROID_ARM" = "true" ] && [ "$BROWSER_TO_INSTALL" != "None" ]; then
+  echo "::error::The built-in browser downloads are x86 APKs and cannot be used in ARM Android mode."
+  echo "::error::Choose Browser to install = None and put a compatible ARM APK in apks/ instead."
+  exit 2
+fi
 if [ "$ANDROID_GOOGLE_PLAY_STORE" = "true" ]; then
   if [ "$VM_DEVICE_MODE" = "tablet" ]; then
     echo "::error::The official Android 7.0 Google Play image is configured for phone mode only in AndroidVM."
@@ -106,19 +116,42 @@ trap 'exit 143' TERM
 
 echo "Installing system packages..."
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  xvfb pulseaudio nginx apache2-utils \
-  openbox xdotool wmctrl \
-  curl unzip ca-certificates libnss3 libasound2t64 libxkbcommon-x11-0 libxcb-cursor0
+ALSA_PACKAGE=libasound2t64
+if grep -qE '^VERSION_ID="22[.]04"' /etc/os-release; then
+  ALSA_PACKAGE=libasound2
+fi
+RUNTIME_PACKAGES=(
+  xvfb pulseaudio nginx apache2-utils
+  openbox xdotool wmctrl
+  curl unzip ca-certificates libnss3 "$ALSA_PACKAGE"
+  libxkbcommon-x11-0 libxcb-cursor0
+)
+if [ "$ANDROID_ARM" = "true" ]; then
+  # Android Emulator 28 and the self-contained Selkies AppImage are used for ARM KitKat.
+  RUNTIME_PACKAGES+=(libfuse2 libncurses5 libtinfo5 libpulse0)
+fi
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${RUNTIME_PACKAGES[@]}"
 
-echo "Installing verified Selkies 2.0.0 package..."
-SELKIES_DEB="$RUNNER_TEMP/selkies-2.0.0-ubuntu24.04-amd64.deb"
-curl -fL --retry 3 --retry-delay 2 \
-  "https://github.com/selkies-project/selkies/releases/download/2.0.0/selkies-2.0.0-ubuntu24.04-amd64.deb" \
-  -o "$SELKIES_DEB"
-echo "bbaa4d71012b9374a753b7dfddc1da07e31f34b04277fe4fb3d045f18fd88391  $SELKIES_DEB" | sha256sum --check
-sudo apt-get install -y "$SELKIES_DEB"
-selkies --version
+SELKIES_BIN=selkies
+if [ "$ANDROID_ARM" = "true" ]; then
+  echo "Installing checksum-verified Selkies 2.0.0 AppImage for the Ubuntu 22.04 ARM guest runner..."
+  SELKIES_APP="$RUNNER_TEMP/selkies-2.0.0-x86_64.AppImage"
+  curl -fL --retry 3 --retry-delay 2 \
+    "https://github.com/selkies-project/selkies/releases/download/2.0.0/selkies-2.0.0-x86_64.AppImage" \
+    -o "$SELKIES_APP"
+  echo "8dcdbe239dc8930545819aae510c45283cf25922250b6b7348ff2fd790c41ed8  $SELKIES_APP" | sha256sum --check
+  chmod +x "$SELKIES_APP"
+  SELKIES_BIN="$SELKIES_APP"
+else
+  echo "Installing verified Selkies 2.0.0 Ubuntu 24.04 package..."
+  SELKIES_DEB="$RUNNER_TEMP/selkies-2.0.0-ubuntu24.04-amd64.deb"
+  curl -fL --retry 3 --retry-delay 2 \
+    "https://github.com/selkies-project/selkies/releases/download/2.0.0/selkies-2.0.0-ubuntu24.04-amd64.deb" \
+    -o "$SELKIES_DEB"
+  echo "bbaa4d71012b9374a753b7dfddc1da07e31f34b04277fe4fb3d045f18fd88391  $SELKIES_DEB" | sha256sum --check
+  sudo apt-get install -y "$SELKIES_DEB"
+fi
+"$SELKIES_BIN" --version
 
 AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
 if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] \
