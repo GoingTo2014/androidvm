@@ -1,1 +1,0 @@
-Temporary one-time ARM launcher test after fixing ANDROID_REPORTED_ABI assignment.
