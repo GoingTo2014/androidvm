@@ -12,6 +12,11 @@ on:
           - "30"
           - "60"
           - "120"
+  push:
+    branches:
+      - "test/arm-api19-emulator"
+    paths:
+      - "scripts/arm-test-trigger.txt"
 
 permissions:
   contents: read
@@ -326,7 +331,27 @@ jobs:
           adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
           adb -s emulator-5554 shell settings put global stay_on_while_plugged_in 3 || true
           adb -s emulator-5554 shell svc power stayon true || true
-          echo "Requesting an initial Android UI redraw so the first remote frame is not stale."
+          echo "Reproducing the emulator screen-recording action that previously made Android visible."
+          # Emulator console screen recording captures the host-rendered device display.
+          # Start/stop it briefly before collecting the guest screenshot to force a fresh display frame.
+          RECORD_DIR="$ANDROID_AVD_HOME/arm-kitkat-test.avd/console_out"
+          RECORD_FILE="$RECORD_DIR/androidvm-display-warmup.webm"
+          mkdir -p "$RECORD_DIR"
+          if timeout 8s adb -s emulator-5554 emu screenrecord start --time-limit 4 "$RECORD_FILE" > "$OUT/screenrecord-start.log" 2>&1; then
+            echo "Emulator display recording started; waiting for its short capture interval."
+            sleep 5
+            timeout 8s adb -s emulator-5554 emu screenrecord stop "$RECORD_FILE" > "$OUT/screenrecord-stop.log" 2>&1 || true
+            sleep 2
+            if [ -s "$RECORD_FILE" ]; then
+              cp "$RECORD_FILE" "$OUT/androidvm-display-warmup.webm" || true
+              echo "Screen-recording warm-up completed; captured $(stat -c%s "$RECORD_FILE") bytes."
+            else
+              echo "::warning::The emulator screen-recording command returned, but no video file was created."
+            fi
+          else
+            echo "::warning::This legacy emulator did not accept the screen-recording console command; continue with ordinary redraw."
+            cat "$OUT/screenrecord-start.log" || true
+          fi
           adb -s emulator-5554 shell input keyevent 224 || true
           adb -s emulator-5554 shell input keyevent 3 || true
           sleep 3
