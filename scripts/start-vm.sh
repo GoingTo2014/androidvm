@@ -515,30 +515,10 @@ center_emulator_window() {
 }
 center_emulator_window
 adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
-if [ "$ANDROID_ARM" = "true" ]; then
-  echo "Reproducing the short emulator screen-recording redraw workaround..."
-  RECORD_DIR="$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.avd/console_out"
-  RECORD_FILE="$RECORD_DIR/androidvm-display-warmup.webm"
-  mkdir -p "$RECORD_DIR"
-  if timeout 8s adb -s emulator-5554 emu screenrecord start --time-limit 4 "$RECORD_FILE" > "$RUNNER_TEMP/screenrecord-start.log" 2>&1; then
-    sleep 5
-    timeout 8s adb -s emulator-5554 emu screenrecord stop "$RECORD_FILE" > "$RUNNER_TEMP/screenrecord-stop.log" 2>&1 || true
-    sleep 2
-    if [ -s "$RECORD_FILE" ]; then
-      echo "Android guest screen-recording redraw completed ($(stat -c%s "$RECORD_FILE") bytes)."
-    else
-      echo "::warning::No recording file was created; normal Android display refresh will continue."
-    fi
-  else
-    echo "::warning::The legacy emulator did not accept the screen-recording command; continuing with normal redraw."
-    cat "$RUNNER_TEMP/screenrecord-start.log" || true
-  fi
-  adb -s emulator-5554 shell input keyevent 224 || true
-  adb -s emulator-5554 shell input keyevent 3 || true
-  sleep 3
-  xrefresh -display "$DISPLAY" -root || true
-fi
-ANDROID_REPORTED_ABI="$(adb -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')"
+# Do not use the emulator-console recording command here: on Emulator 28 it can
+# drop the ADB transport after creating a tiny/invalid recording. The tested UI
+# workaround is performed from the emulator controls, not via "adb emu screenrecord".
+NDROID_REPORTED_ABI="$(adb -s emulator-5554 shell getprop ro.product.cpu.abi | tr -d '\r')"
 echo "Android reported ABI: $ANDROID_REPORTED_ABI"
 if [ "$ANDROID_ARM" = "true" ]; then
   if ! printf '%s' "$ANDROID_REPORTED_ABI" | grep -qi '^armeabi-v7a$'; then
