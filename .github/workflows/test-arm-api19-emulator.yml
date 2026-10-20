@@ -12,6 +12,11 @@ on:
           - "30"
           - "60"
           - "120"
+  push:
+    branches:
+      - "test/arm-api19-emulator"
+    paths:
+      - "scripts/arm-test-trigger.txt"
 
 permissions:
   contents: read
@@ -49,6 +54,8 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           SELKIES_APP="$RUNNER_TEMP/selkies-2.0.0-x86_64.AppImage"
+          LEGACY_SDK_DIR="$RUNNER_TEMP/legacy-sdk"
+          LEGACY_EMULATOR="$LEGACY_SDK_DIR/emulator/emulator"
           EMULATOR_PID=""
           XVFB_PID=""
           OPENBOX_PID=""
@@ -59,7 +66,6 @@ jobs:
             30|60|120) ;;
             *) echo "::error::Invalid session length: $SESSION_MINUTES"; exit 2 ;;
           esac
-
           if [ -z "$VM_ACCESS_PASSWORD" ]; then
             echo "::error::Missing repository Actions secret VM_ACCESS_PASSWORD. Add it under Settings > Secrets and variables > Actions before starting this test."
             exit 2
@@ -108,10 +114,13 @@ jobs:
           echo "Android command-line tools installed."
           echo "::endgroup::"
 
-          echo "::group::Install official Android 4.4 ARM image (live SDK output)"
+          echo "::group::Install official Android 4.4 ARM image and AVD tools (live SDK output)"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses 2>&1 | tee "$OUT/sdk-licenses.log" || true
-          if ! "$SDKMANAGER" --verbose --sdk_root="$ANDROID_HOME" --install platform-tools "$IMAGE_PACKAGE" 2>&1 | tee "$OUT/sdk-install.log"; then
-            echo "::error::SDK Manager failed to install $IMAGE_PACKAGE. The SDK output is shown above."
+          # Keep the SDK's emulator package installed so avdmanager recognizes the SDK.
+          # The legacy emulator runtime is unpacked separately below; it must not replace this package directory.
+          if ! "$SDKMANAGER" --verbose --sdk_root="$ANDROID_HOME" --install platform-tools emulator "$IMAGE_PACKAGE" 2>&1 | tee "$OUT/sdk-install.log"; then
+            echo "::error::SDK Manager failed to install platform-tools, emulator, or $IMAGE_PACKAGE."
+            echo "SDK install log is shown above and saved as an artifact."
             "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --list 2>&1 | tee "$OUT/sdk-package-list.log" || true
             exit 1
           fi
@@ -119,20 +128,31 @@ jobs:
             echo "::error::SDK Manager returned success, but the ARM system.img is missing."
             exit 1
           fi
-          echo "Official ARM image is present."
+          test -f "$ANDROID_HOME/emulator/package.xml" || {
+            echo "::error::The SDK emulator package metadata is missing after installation."
+            exit 1
+          }
+          echo "Official ARM image and SDK emulator package are installed."
           echo "::endgroup::"
 
-          echo "::group::Install legacy Android Emulator 28.0.22"
+          echo "::group::Download legacy Android Emulator 28.0.22 separately"
           curl -fL --retry 3 --retry-delay 2 --progress-bar \
             "https://dl.google.com/android/repository/emulator-linux-5194135.zip" \
             -o "$RUNNER_TEMP/emulator-linux-5194135.zip"
-          rm -rf "$ANDROID_HOME/emulator"
-          unzip -q "$RUNNER_TEMP/emulator-linux-5194135.zip" -d "$ANDROID_HOME"
-          "$ANDROID_HOME/emulator/emulator" -version 2>&1 | tee "$OUT/emulator-version.txt"
-          if ! "$ANDROID_HOME/emulator/emulator" -version 2>&1 | grep -q '28\.0\.22'; then
+          rm -rf "$LEGACY_SDK_DIR"
+          mkdir -p "$LEGACY_SDK_DIR"
+          unzip -q "$RUNNER_TEMP/emulator-linux-5194135.zip" -d "$LEGACY_SDK_DIR"
+          if [ ! -x "$LEGACY_EMULATOR" ]; then
+            echo "::error::Legacy emulator executable was not found at $LEGACY_EMULATOR."
+            find "$LEGACY_SDK_DIR" -maxdepth 3 -type f -name emulator -print || true
+            exit 1
+          fi
+          "$LEGACY_EMULATOR" -version 2>&1 | tee "$OUT/emulator-version.txt"
+          if ! "$LEGACY_EMULATOR" -version 2>&1 | grep -q '28\.0\.22'; then
             echo "::error::Downloaded emulator is not version 28.0.22."
             exit 1
           fi
+          echo "Legacy emulator installed separately; current SDK package metadata remains intact."
           echo "::endgroup::"
 
           echo "::group::Create ARM KitKat virtual device"
@@ -150,23 +170,31 @@ jobs:
           echo "AVD created."
           echo "::endgroup::"
 
-          echo "::group::Start virtual display and browser streaming"
-          Xvfb :99 -screen 0 1280x800x24 -ac -nolisten tcp > "$OUT/xvfb.log" 2>&1 &
+          echo "::group::Start virtual display"
+          Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac +extension GLX +extension RANDR +extension RENDER -nolisten tcp > "$OUT/xvfb.log" 2>&1 &
           XVFB_PID=$!
           export DISPLAY=:99
           sleep 2
+          if ! kill -0 "$XVFB_PID" 2>/dev/null; then
+            echo "::error::Xvfb failed to start."
+            cat "$OUT/xvfb.log" || true
+            exit 1
+          fi
           openbox --sm-disable > "$OUT/openbox.log" 2>&1 &
           OPENBOX_PID=$!
           sleep 2
+          echo "Virtual X11 display is running."
+          echo "::endgroup::"
 
-          echo "Downloading Selkies 2.0.0 AppImage..."
+          echo "::group::Download and start password-protected Selkies"
+          # The AppImage is self-contained and runs on Ubuntu 22.04; verify the official release digest.
           curl -fL --retry 3 --retry-delay 2 --progress-bar \
             "https://github.com/selkies-project/selkies/releases/download/2.0.0/selkies-2.0.0-x86_64.AppImage" \
             -o "$SELKIES_APP"
+          echo "8dcdbe239dc8930545819aae510c45283cf25922250b6b7348ff2fd790c41ed8  $SELKIES_APP" | sha256sum --check
           chmod +x "$SELKIES_APP"
           "$SELKIES_APP" --version 2>&1 | tee "$OUT/selkies-version.txt" || true
 
-          echo "Starting browser desktop stream with password protection..."
           nohup "$SELKIES_APP" \
             --addr=127.0.0.1 \
             --port=6080 \
@@ -190,7 +218,7 @@ jobs:
             fi
             if ! kill -0 "$SELKIES_PID" 2>/dev/null; then
               echo "::error::Selkies exited during startup; recent log follows."
-              tail -n 120 "$OUT/selkies.log" || true
+              tail -n 160 "$OUT/selkies.log" || true
               exit 1
             fi
             sleep 1
@@ -201,14 +229,13 @@ jobs:
             exit 1
           fi
           echo "Selkies local HTTP check passed."
+          echo "::endgroup::"
 
-          echo "Installing Cloudflare Tunnel client..."
+          echo "::group::Start temporary Cloudflare tunnel"
           curl -fL --retry 3 --retry-delay 2 --progress-bar \
             "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb" \
             -o "$RUNNER_TEMP/cloudflared.deb"
           sudo dpkg -i "$RUNNER_TEMP/cloudflared.deb"
-
-          echo "Starting temporary TryCloudflare tunnel..."
           nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:6080 \
             > >(tee "$OUT/cloudflared.log") 2>&1 &
           TUNNEL_PID=$!
@@ -221,7 +248,7 @@ jobs:
           done
           if [ -z "$TUNNEL_URL" ]; then
             echo "::error::TryCloudflare did not provide a public URL."
-            tail -n 120 "$OUT/cloudflared.log" || true
+            tail -n 140 "$OUT/cloudflared.log" || true
             exit 1
           fi
 
@@ -232,12 +259,12 @@ jobs:
           echo "Login username: vm"
           echo "Login password: the repository Actions secret VM_ACCESS_PASSWORD"
           echo "The link is temporary; do not share it publicly."
-          echo "The Android emulator will now start, so the boot screen may initially be blank."
+          echo "Android is about to start; you may first see a blank or startup screen."
           echo "=========================================================="
           echo "::endgroup::"
 
           echo "::group::Launch ARM Android 4.4 (live emulator output)"
-          "$ANDROID_HOME/emulator/emulator" \
+          "$LEGACY_EMULATOR" \
             -avd arm-kitkat-test -port 5554 -no-audio -no-boot-anim \
             -no-snapshot -gpu off -accel off -verbose -show-kernel -no-metrics \
             -memory 1024 \
@@ -245,11 +272,11 @@ jobs:
           EMULATOR_PID=$!
 
           BOOTED=0
-          echo "Waiting up to 15 minutes for Android to boot. Watch both this log and the desktop link."
+          echo "Waiting up to 15 minutes for Android to boot. The desktop link is already available."
           for i in $(seq 1 180); do
             if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
-              echo "::error::Emulator exited before Android finished booting."
-              tail -n 180 "$OUT/emulator.log" || true
+              echo "::error::Legacy emulator exited before Android finished booting."
+              tail -n 200 "$OUT/emulator.log" || true
               exit 1
             fi
             if adb devices 2>/dev/null | grep -q 'emulator-5554[[:space:]]*device'; then
@@ -279,7 +306,7 @@ jobs:
             echo "::error::Android booted, but its primary ABI was not ARM."
             exit 1
           fi
-          echo "SUCCESS: Android 4.4 ARM booted. The browser desktop link remains active for $SESSION_MINUTES minutes."
+          echo "SUCCESS: Android 4.4 ARM booted. The desktop link remains active for $SESSION_MINUTES minutes."
           echo "::endgroup::"
 
           REMAINING=$((SESSION_MINUTES * 60))
