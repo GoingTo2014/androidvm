@@ -12,6 +12,11 @@ on:
           - "30"
           - "60"
           - "120"
+  push:
+    branches:
+      - "test/arm-api19-emulator"
+    paths:
+      - "scripts/arm-test-trigger.txt"
 
 permissions:
   contents: read
@@ -192,7 +197,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Start virtual display"
-          Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac +extension COMPOSITE +extension DAMAGE +extension GLX +extension RANDR +extension RENDER +extension MIT-SHM +extension XFIXES +extension XTEST +iglx +render -nolisten tcp -noreset -shmem > "$OUT/xvfb.log" 2>&1 &
+          Xvfb :99 -screen 0 1280x800x24 -s 0 -dpms -ac +extension COMPOSITE +extension DAMAGE +extension GLX +extension RANDR +extension RENDER +extension MIT-SHM +extension XFIXES +extension XTEST +iglx +render -nolisten tcp -noreset > "$OUT/xvfb.log" 2>&1 &
           XVFB_PID=$!
           export DISPLAY=:99
           sleep 2
@@ -204,6 +209,7 @@ jobs:
           openbox --sm-disable > "$OUT/openbox.log" 2>&1 &
           OPENBOX_PID=$!
           sleep 2
+          xsetroot -solid "#151820" || true
           xset s off -dpms || true
           xdpyinfo -display "$DISPLAY" -queryExtensions > "$OUT/x11-extensions.txt" 2>&1 || true
           xrandr --display "$DISPLAY" --current > "$OUT/x11-resolution.txt" 2>&1 || true
@@ -227,8 +233,9 @@ jobs:
             --mode=websockets \
             --encoder=h264enc \
             --use-cpu=true \
-            --enable-resize=true \
-            --framerate=30,8-30 \
+            --enable-dual-mode=true \
+            --enable-resize=false \
+            --framerate=60,8-60 \
             --audio-enabled=false \
             > >(tee "$OUT/selkies.log") 2>&1 &
           SELKIES_PID=$!
