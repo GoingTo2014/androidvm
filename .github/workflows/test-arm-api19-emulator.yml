@@ -1,21 +1,31 @@
-name: Test Android 4.4 ARM image
+name: Test Android 4.4 ARM desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: "How long to keep the ARM desktop open"
+        required: true
+        type: choice
+        default: "30"
+        options:
+          - "30"
+          - "60"
+          - "120"
   push:
     branches:
       - "test/arm-api19-emulator"
     paths:
-      - ".github/workflows/test-arm-api19-emulator.yml"
+      - "scripts/arm-test-trigger.txt"
 
 permissions:
   contents: read
 
 jobs:
-  arm-boot-test:
-    name: Boot Android 4.4 ARM with legacy emulator
+  arm-desktop-test:
+    name: Boot and stream Android 4.4 ARM
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 210
     steps:
       - name: Check out test branch
         uses: actions/checkout@v4
@@ -26,8 +36,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install legacy Android 4.4 ARM image and test boot
+      - name: Install ARM image, start desktop, and stream live logs
         shell: bash
+        env:
+          VM_ACCESS_PASSWORD: ${{ secrets.VM_ACCESS_PASSWORD }}
+          SESSION_MINUTES: ${{ inputs.session_minutes || '30' }}
         run: |
           set -Eeuo pipefail
 
@@ -37,81 +50,99 @@ jobs:
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
           OUT="$GITHUB_WORKSPACE/arm-test-logs"
-          mkdir -p "$OUT" "$ANDROID_HOME/cmdline-tools" "$ANDROID_AVD_HOME"
           IMAGE_PACKAGE="system-images;android-19;google_apis;armeabi-v7a"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          SELKIES_APP="$RUNNER_TEMP/selkies-2.0.0-x86_64.AppImage"
           EMULATOR_PID=""
+          XVFB_PID=""
+          OPENBOX_PID=""
+          SELKIES_PID=""
+          TUNNEL_PID=""
+
+          case "$SESSION_MINUTES" in
+            30|60|120) ;;
+            *) echo "::error::Invalid session length: $SESSION_MINUTES"; exit 2 ;;
+          esac
+
+          if [ -z "$VM_ACCESS_PASSWORD" ]; then
+            echo "::error::Missing repository Actions secret VM_ACCESS_PASSWORD. Add it under Settings > Secrets and variables > Actions before starting this test."
+            exit 2
+          fi
+
+          mkdir -p "$OUT" "$ANDROID_HOME/cmdline-tools" "$ANDROID_AVD_HOME"
+          echo "=== Android 4.4 ARM desktop test ==="
+          echo "Runner OS:"
+          cat /etc/os-release | head -n 8
+          echo "KVM device: $(test -e /dev/kvm && echo present || echo absent)"
+          echo "This test installs no APKs; it only boots the system image."
 
           collect_logs() {
             mkdir -p "$OUT"
             if [ -x "$ANDROID_HOME/platform-tools/adb" ]; then
-              adb devices -l > "$OUT/adb-devices.txt" 2>&1 || true
-              adb -s emulator-5554 shell getprop > "$OUT/android-properties.txt" 2>&1 || true
-              adb -s emulator-5554 logcat -d -t 500 > "$OUT/android-logcat.txt" 2>&1 || true
+              timeout 8s adb devices -l > "$OUT/adb-devices.txt" 2>&1 || true
+              timeout 8s adb -s emulator-5554 shell getprop > "$OUT/android-properties.txt" 2>&1 || true
+              timeout 8s adb -s emulator-5554 logcat -d -t 500 > "$OUT/android-logcat.txt" 2>&1 || true
             fi
-            if [ -n "$EMULATOR_PID" ]; then
-              kill "$EMULATOR_PID" 2>/dev/null || true
-              wait "$EMULATOR_PID" 2>/dev/null || true
-            fi
-            if [ -f "$RUNNER_TEMP/android-emulator.log" ]; then
-              cp "$RUNNER_TEMP/android-emulator.log" "$OUT/emulator.log" || true
-            fi
+            if [ -n "$EMULATOR_PID" ]; then kill "$EMULATOR_PID" 2>/dev/null || true; fi
+            if [ -n "$TUNNEL_PID" ]; then kill "$TUNNEL_PID" 2>/dev/null || true; fi
+            if [ -n "$SELKIES_PID" ]; then kill "$SELKIES_PID" 2>/dev/null || true; fi
+            if [ -n "$OPENBOX_PID" ]; then kill "$OPENBOX_PID" 2>/dev/null || true; fi
+            if [ -n "$XVFB_PID" ]; then kill "$XVFB_PID" 2>/dev/null || true; fi
+            wait 2>/dev/null || true
           }
           trap collect_logs EXIT
 
-          echo "Runner OS:"
-          cat /etc/os-release | head -n 8
-          echo "KVM device: $(test -e /dev/kvm && echo present || echo absent)"
-          echo "Installing legacy emulator runtime libraries..."
-          sudo apt-get update
+          echo "::group::Install runtime dependencies (live output)"
+          sudo apt-get update 2>&1 | tee "$OUT/apt-update.log"
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             curl unzip ca-certificates libncurses5 libtinfo5 libnss3 \
-            libx11-6 libx11-xcb1 libxcb1 libxcb-cursor0 \
-            libxkbcommon-x11-0 libgl1 libpulse0 libasound2
+            libx11-6 libx11-xcb1 libxcb1 libxcb-cursor0 libxkbcommon-x11-0 \
+            libgl1 libpulse0 libasound2 libfuse2 xvfb openbox xdotool wmctrl \
+            x11-utils 2>&1 | tee "$OUT/apt-install.log"
+          echo "::endgroup::"
 
-          echo "Downloading Android command-line tools..."
-          curl -fL --retry 3 --retry-delay 2 \
+          echo "::group::Download Android command-line tools"
+          curl -fL --retry 3 --retry-delay 2 --progress-bar \
             "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
             -o "$RUNNER_TEMP/android-commandline-tools.zip"
           mkdir -p "$RUNNER_TEMP/android-tools-unpack"
           unzip -q "$RUNNER_TEMP/android-commandline-tools.zip" -d "$RUNNER_TEMP/android-tools-unpack"
           rm -rf "$ANDROID_HOME/cmdline-tools/latest"
           mv "$RUNNER_TEMP/android-tools-unpack/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          echo "Android command-line tools installed."
+          echo "::endgroup::"
 
-          echo "Accepting SDK licenses..."
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses > "$OUT/sdk-licenses.log" 2>&1 || true
-
-          echo "Installing the official API 19 Google APIs ARM system image..."
-          if ! "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install platform-tools "$IMAGE_PACKAGE" > "$OUT/sdk-install.log" 2>&1; then
-            cat "$OUT/sdk-install.log"
-            "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --list > "$OUT/sdk-package-list.txt" 2>&1 || true
-            grep -i -C 2 'android-19.*armeabi-v7a\|armeabi-v7a.*android-19' "$OUT/sdk-package-list.txt" || true
-            echo "::error::Android SDK could not install $IMAGE_PACKAGE."
+          echo "::group::Install official Android 4.4 ARM image (live SDK output)"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses 2>&1 | tee "$OUT/sdk-licenses.log" || true
+          if ! "$SDKMANAGER" --verbose --sdk_root="$ANDROID_HOME" --install platform-tools "$IMAGE_PACKAGE" 2>&1 | tee "$OUT/sdk-install.log"; then
+            echo "::error::SDK Manager failed to install $IMAGE_PACKAGE. The SDK output is shown above."
+            "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --list 2>&1 | tee "$OUT/sdk-package-list.log" || true
             exit 1
           fi
-          cat "$OUT/sdk-install.log"
-          test -f "$ANDROID_HOME/system-images/android-19/google_apis/armeabi-v7a/system.img"
+          if [ ! -f "$ANDROID_HOME/system-images/android-19/google_apis/armeabi-v7a/system.img" ]; then
+            echo "::error::SDK Manager returned success, but the ARM system.img is missing."
+            exit 1
+          fi
+          echo "Official ARM image is present."
+          echo "::endgroup::"
 
-          echo "Downloading Google's legacy emulator build 5194135 (version 28.0.22)..."
-          curl -fL --retry 3 --retry-delay 2 \
+          echo "::group::Install legacy Android Emulator 28.0.22"
+          curl -fL --retry 3 --retry-delay 2 --progress-bar \
             "https://dl.google.com/android/repository/emulator-linux-5194135.zip" \
             -o "$RUNNER_TEMP/emulator-linux-5194135.zip"
           rm -rf "$ANDROID_HOME/emulator"
           unzip -q "$RUNNER_TEMP/emulator-linux-5194135.zip" -d "$ANDROID_HOME"
-
-          "$ANDROID_HOME/emulator/emulator" -version | tee "$OUT/emulator-version.txt"
+          "$ANDROID_HOME/emulator/emulator" -version 2>&1 | tee "$OUT/emulator-version.txt"
           if ! "$ANDROID_HOME/emulator/emulator" -version 2>&1 | grep -q '28\.0\.22'; then
-            echo "::error::The downloaded emulator archive did not report version 28.0.22."
+            echo "::error::Downloaded emulator is not version 28.0.22."
             exit 1
           fi
+          echo "::endgroup::"
 
-          echo "Creating ARM AVD..."
+          echo "::group::Create ARM KitKat virtual device"
           printf 'no\n' | "$AVDMANAGER" --verbose create avd \
-            --name arm-kitkat-test \
-            --package "$IMAGE_PACKAGE" \
-            --force 2>&1 | tee "$OUT/avd-create.log"
-
+            --name arm-kitkat-test --package "$IMAGE_PACKAGE" --force 2>&1 | tee "$OUT/avd-create.log"
           AVD_CONFIG="$ANDROID_AVD_HOME/arm-kitkat-test.avd/config.ini"
           cat >> "$AVD_CONFIG" <<'AVD_CONFIG_VALUES'
           hw.ramSize=1024
@@ -121,22 +152,109 @@ jobs:
           showDeviceFrame=no
           disk.dataPartition.size=2G
           AVD_CONFIG_VALUES
+          echo "AVD created."
+          echo "::endgroup::"
 
-          echo "Starting headless ARM Android 4.4; no APKs will be installed."
-          set +e
+          echo "::group::Start virtual display and browser streaming"
+          Xvfb :99 -screen 0 1280x800x24 -ac -nolisten tcp > "$OUT/xvfb.log" 2>&1 &
+          XVFB_PID=$!
+          export DISPLAY=:99
+          sleep 2
+          openbox --sm-disable > "$OUT/openbox.log" 2>&1 &
+          OPENBOX_PID=$!
+          sleep 2
+
+          echo "Downloading Selkies 2.0.0 AppImage..."
+          curl -fL --retry 3 --retry-delay 2 --progress-bar \
+            "https://github.com/selkies-project/selkies/releases/download/2.0.0/selkies-2.0.0-x86_64.AppImage" \
+            -o "$SELKIES_APP"
+          chmod +x "$SELKIES_APP"
+          "$SELKIES_APP" --version 2>&1 | tee "$OUT/selkies-version.txt" || true
+
+          echo "Starting browser desktop stream with password protection..."
+          nohup "$SELKIES_APP" \
+            --addr=127.0.0.1 \
+            --port=6080 \
+            --basic-auth-user=vm \
+            --basic-auth-password="$VM_ACCESS_PASSWORD" \
+            --mode=websockets \
+            --encoder=h264enc \
+            --use-cpu=true \
+            --enable-resize=false \
+            --framerate=30,8-30 \
+            --audio-enabled=false \
+            > >(tee "$OUT/selkies.log") 2>&1 &
+          SELKIES_PID=$!
+
+          SELKIES_OK=0
+          for i in $(seq 1 60); do
+            if curl --silent --show-error --fail --user "vm:$VM_ACCESS_PASSWORD" \
+              http://127.0.0.1:6080/ -o "$OUT/selkies-homepage.html"; then
+              SELKIES_OK=1
+              break
+            fi
+            if ! kill -0 "$SELKIES_PID" 2>/dev/null; then
+              echo "::error::Selkies exited during startup; recent log follows."
+              tail -n 120 "$OUT/selkies.log" || true
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$SELKIES_OK" -ne 1 ]; then
+            echo "::error::Selkies did not become reachable on port 6080."
+            tail -n 160 "$OUT/selkies.log" || true
+            exit 1
+          fi
+          echo "Selkies local HTTP check passed."
+
+          echo "Installing Cloudflare Tunnel client..."
+          curl -fL --retry 3 --retry-delay 2 --progress-bar \
+            "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb" \
+            -o "$RUNNER_TEMP/cloudflared.deb"
+          sudo dpkg -i "$RUNNER_TEMP/cloudflared.deb"
+
+          echo "Starting temporary TryCloudflare tunnel..."
+          nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:6080 \
+            > >(tee "$OUT/cloudflared.log") 2>&1 &
+          TUNNEL_PID=$!
+          TUNNEL_URL=""
+          for i in $(seq 1 90); do
+            TUNNEL_URL="$(grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$OUT/cloudflared.log" | head -n 1 || true)"
+            if [ -n "$TUNNEL_URL" ]; then break; fi
+            if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [ -z "$TUNNEL_URL" ]; then
+            echo "::error::TryCloudflare did not provide a public URL."
+            tail -n 120 "$OUT/cloudflared.log" || true
+            exit 1
+          fi
+
+          echo ""
+          echo "=========================================================="
+          echo "ANDROID 4.4 ARM DESKTOP LINK"
+          echo "Open: $TUNNEL_URL"
+          echo "Login username: vm"
+          echo "Login password: the repository Actions secret VM_ACCESS_PASSWORD"
+          echo "The link is temporary; do not share it publicly."
+          echo "The Android emulator will now start, so the boot screen may initially be blank."
+          echo "=========================================================="
+          echo "::endgroup::"
+
+          echo "::group::Launch ARM Android 4.4 (live emulator output)"
           "$ANDROID_HOME/emulator/emulator" \
-            -avd arm-kitkat-test \
-            -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu off -accel off -verbose -show-kernel \
-            > "$RUNNER_TEMP/android-emulator.log" 2>&1 &
+            -avd arm-kitkat-test -port 5554 -no-audio -no-boot-anim \
+            -no-snapshot -gpu off -accel off -verbose -show-kernel -no-metrics \
+            -memory 1024 \
+            > >(tee "$OUT/emulator.log") 2>&1 &
           EMULATOR_PID=$!
-          set -e
 
           BOOTED=0
+          echo "Waiting up to 15 minutes for Android to boot. Watch both this log and the desktop link."
           for i in $(seq 1 180); do
             if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
-              echo "::error::The emulator process exited before Android finished booting."
-              tail -n 200 "$RUNNER_TEMP/android-emulator.log" || true
+              echo "::error::Emulator exited before Android finished booting."
+              tail -n 180 "$OUT/emulator.log" || true
               exit 1
             fi
             if adb devices 2>/dev/null | grep -q 'emulator-5554[[:space:]]*device'; then
@@ -150,28 +268,52 @@ jobs:
 
           if [ "$BOOTED" -ne 1 ]; then
             echo "::error::Android 4.4 ARM did not finish booting within 15 minutes."
-            adb devices -l || true
-            adb -s emulator-5554 shell getprop 2>&1 | tail -n 180 || true
-            adb -s emulator-5554 logcat -d -t 300 2>&1 | tail -n 220 || true
-            tail -n 240 "$RUNNER_TEMP/android-emulator.log" || true
+            adb devices -l 2>&1 | tee "$OUT/adb-devices-on-timeout.txt" || true
+            timeout 8s adb -s emulator-5554 shell getprop 2>&1 | tee "$OUT/android-properties-on-timeout.txt" || true
+            timeout 8s adb -s emulator-5554 logcat -d -t 300 2>&1 | tee "$OUT/android-logcat-on-timeout.txt" || true
+            tail -n 240 "$OUT/emulator.log" || true
             exit 1
           fi
 
+          adb -s emulator-5554 shell settings put system screen_off_timeout 2147483647 || true
           adb -s emulator-5554 shell getprop ro.build.version.release | tee "$OUT/android-release.txt"
           adb -s emulator-5554 shell getprop ro.build.version.sdk | tee "$OUT/android-api.txt"
           adb -s emulator-5554 shell getprop ro.product.cpu.abi | tee "$OUT/android-abi.txt"
           adb -s emulator-5554 shell getprop ro.build.fingerprint | tee "$OUT/android-fingerprint.txt"
           if ! adb -s emulator-5554 shell getprop ro.product.cpu.abi | grep -qi '^armeabi'; then
-            echo "::error::Android booted, but the reported primary ABI is not ARM."
+            echo "::error::Android booted, but its primary ABI was not ARM."
             exit 1
           fi
-          echo "SUCCESS: Android 4.4 ARM reached sys.boot_completed=1."
+          echo "SUCCESS: Android 4.4 ARM booted. The browser desktop link remains active for $SESSION_MINUTES minutes."
+          echo "::endgroup::"
+
+          REMAINING=$((SESSION_MINUTES * 60))
+          while [ "$REMAINING" -gt 0 ]; do
+            if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+              echo "::error::TryCloudflare stopped."
+              tail -n 100 "$OUT/cloudflared.log" || true
+              exit 1
+            fi
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "::error::Android Emulator stopped."
+              tail -n 160 "$OUT/emulator.log" || true
+              exit 1
+            fi
+            if ! kill -0 "$SELKIES_PID" 2>/dev/null; then
+              echo "::error::Selkies stopped."
+              tail -n 120 "$OUT/selkies.log" || true
+              exit 1
+            fi
+            sleep 30
+            REMAINING=$((REMAINING - 30))
+          done
+          echo "The configured session duration has elapsed."
 
       - name: Upload diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-4.4-arm-boot-test-logs
+          name: android-4.4-arm-desktop-logs
           path: arm-test-logs/
           if-no-files-found: warn
           retention-days: 7
